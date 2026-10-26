@@ -23,7 +23,7 @@ public sealed class RouteRow(RouteEntry entry) : INotifyPropertyChanged
 
 public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
 {
-    private readonly string _dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MyVpnApp");
+    private readonly string _dataDirectory;
     private readonly CredentialProtector _protector = new();
     private readonly VpnService _vpn;
     private readonly RouteManager _routeManager;
@@ -56,6 +56,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
 
     public MainViewModel()
     {
+        _dataDirectory = AppDataDirectory.GetCurrentUserDirectory(this);
         Directory.CreateDirectory(_dataDirectory);
         _routeStore = new RouteStore(Path.Combine(_dataDirectory, "routes.json"), this);
         _settingsStore = new SettingsStore(Path.Combine(_dataDirectory, "settings.json"), this);

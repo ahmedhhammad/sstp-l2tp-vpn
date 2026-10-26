@@ -52,7 +52,7 @@ To create a GitHub release after the repository is pushed, push a version tag su
 3. Add one or more IPv4 destinations such as `192.168.1.50` or `192.168.1.0/24`. `0.0.0.0/0` is rejected to prevent replacing the default route.
 4. Connect. The client discovers the PPP interface and peer from Windows networking information, then applies enabled routes. Check the activity log and route status if discovery or route installation fails.
 
-The app keeps existing user data at `%APPDATA%\MyVpnApp` so upgrades retain saved settings, routes, and encrypted credentials. The directory name is retained for compatibility; it is not the product or VPN profile name.
+The app stores settings, routes, and applied-route state at `%APPDATA%\SarmadiVpn`. On first launch after upgrading from an earlier build, existing data is copied into this folder; the original files are kept as a backup. Saved passwords and L2TP keys remain DPAPI-encrypted for the current Windows user.
 
 ## L2TP behind NAT
 

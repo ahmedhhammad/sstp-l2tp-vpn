@@ -2,7 +2,7 @@
 
 ## SARMADI VPN branding
 
-The managed solution, source namespaces, native project, executable, and UI now use the SARMADI VPN brand and the supplied logo. The existing `%APPDATA%\MyVpnApp` location is retained so saved settings and routes continue to load after upgrading.
+The managed solution, source namespaces, native project, executable, and UI use the SARMADI VPN brand and supplied logo. The apps store data under `%APPDATA%\SarmadiVpn` and copy saved data from earlier builds on first launch.
 
 ## Audit (before implementation)
 
@@ -33,7 +33,7 @@ The managed solution, source namespaces, native project, executable, and UI now 
 
 ## Native implementation update
 
-After installing the selected MSVC C++ workload and SDK, a native Win32 build was added in `native\SarmadiVpnNative.sln`. The managed solution remains intact. The native UI uses Windows RAS and IP Helper APIs (not an SSTP/L2TP implementation), embeds a requireAdministrator manifest, statically links the CRT, and targets Windows 7 SP1 minimum. It stores settings, protected secrets, route list, and applied-route cleanup data under `%APPDATA%\MyVpnApp`.
+After installing the selected MSVC C++ workload and SDK, a native Win32 build was added in `native\SarmadiVpnNative.sln`. The managed solution remains intact. The native UI uses Windows RAS and IP Helper APIs (not an SSTP/L2TP implementation), embeds a requireAdministrator manifest, statically links the CRT, and targets Windows 7 SP1 minimum. It stores settings, protected secrets, route list, and applied-route cleanup data under `%APPDATA%\SarmadiVpn`.
 
 Verified in this environment:
 

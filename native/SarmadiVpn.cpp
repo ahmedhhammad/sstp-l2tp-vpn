@@ -112,7 +112,30 @@ std::wstring IpText(DWORD addr){IN_ADDR a{};a.s_addr=addr;wchar_t b[32]{};InetNt
 bool ParseCidr(std::wstring value,Network& n,std::wstring& error){value=Trim(value);auto slash=value.find(L'/');if(slash!=value.npos&&value.find(L'/',slash+1)!=value.npos){error=L"Enter one IPv4 address or CIDR.";return false;}DWORD ip;if(!ParseIPv4(value.substr(0,slash),ip)){error=L"Enter a valid IPv4 address.";return false;}unsigned prefix=32;if(slash!=value.npos){auto p=value.substr(slash+1);if(p.empty()||p.size()>2||!std::all_of(p.begin(),p.end(),[](wchar_t c){return c>=L'0'&&c<=L'9';})){error=L"Prefix must be from 0 to 32.";return false;}prefix=(unsigned)_wtoi(p.c_str());if(prefix>32){error=L"Prefix must be from 0 to 32.";return false;}}
     DWORD host=ntohl(ip),mask=prefix?0xFFFFFFFFu<<(32-prefix):0; n.prefix=prefix;n.address=IpText(htonl(host&mask));n.mask=IpText(htonl(mask));return true;}
 std::wstring Normalize(const Network& n){return n.address+L"/"+std::to_wstring(n.prefix);}
-std::wstring AppDir(){wchar_t p[MAX_PATH];if(FAILED(SHGetFolderPathW(nullptr,CSIDL_APPDATA|CSIDL_FLAG_CREATE,nullptr,SHGFP_TYPE_CURRENT,p)))return L"";std::wstring d=p;d+=L"\\MyVpnApp";CreateDirectoryW(d.c_str(),nullptr);return d;}
+bool MigrateLegacyData(const std::wstring& current,const std::wstring& previous){
+    if(GetFileAttributesW(previous.c_str())==INVALID_FILE_ATTRIBUTES)return true;
+    const std::wstring marker=current+L"\\.legacy-data-migration-v1";
+    if(GetFileAttributesW(marker.c_str())!=INVALID_FILE_ATTRIBUTES)return true;
+    const wchar_t* files[]={L"settings.json",L"routes.json",L"applied-routes.json"};
+    for(const wchar_t* name:files){
+        const std::wstring source=previous+L"\\"+name,destination=current+L"\\"+name;
+        if(GetFileAttributesW(source.c_str())==INVALID_FILE_ATTRIBUTES||GetFileAttributesW(destination.c_str())!=INVALID_FILE_ATTRIBUTES)continue;
+        const std::wstring temporary=destination+L"."+RandomId()+L".tmp";
+        if(!CopyFileW(source.c_str(),temporary.c_str(),TRUE))return false;
+        if(!MoveFileExW(temporary.c_str(),destination.c_str(),MOVEFILE_WRITE_THROUGH)){
+            DWORD error=GetLastError();DeleteFileW(temporary.c_str());
+            if(error!=ERROR_ALREADY_EXISTS&&error!=ERROR_FILE_EXISTS&&GetFileAttributesW(destination.c_str())==INVALID_FILE_ATTRIBUTES)return false;
+        }
+    }
+    return AtomicWrite(marker,L"completed");
+}
+std::wstring AppDir(){
+    wchar_t p[MAX_PATH];if(FAILED(SHGetFolderPathW(nullptr,CSIDL_APPDATA|CSIDL_FLAG_CREATE,nullptr,SHGFP_TYPE_CURRENT,p)))return L"";
+    const std::wstring root=p,current=root+L"\\SarmadiVpn",previous=root+L"\\MyVpnApp";
+    if(!CreateDirectoryW(current.c_str(),nullptr)&&GetLastError()!=ERROR_ALREADY_EXISTS)return L"";
+    if(!MigrateLegacyData(current,previous)){Log(L"Could not copy all saved data to %APPDATA%\\SarmadiVpn; continuing with the previous data folder. The original files are unchanged.");return previous;}
+    return current;
+}
 std::wstring FriendlyError(DWORD code){wchar_t msg[512]{};if(RasGetErrorStringW(code,msg,512)==0&&msg[0])return std::wstring(L"RAS error ")+std::to_wstring(code)+L": "+msg;return L"RAS error "+std::to_wstring(code)+L". Check the VPN address, credentials, protocol, and server.";}
 }
 
@@ -202,7 +225,7 @@ void CreateUi(HWND hwnd){g.window=hwnd;g.font=(HFONT)GetStockObject(DEFAULT_GUI_
     Label(L"Activity log",20,520,120);g.log=Control(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,20,540,1000,150,IDC_LOG,WS_EX_CLIENTEDGE);
     HWND controls[]={g.server,g.user,g.password,g.psk,g.protocol,g.remember,g.connect,g.disconnect,g.nat,g.cert,g.destination,g.label,g.add,g.del,g.list,g.log,g.copy,g.status};for(HWND c:controls)SendMessageW(c,WM_SETFONT,(WPARAM)g.font,TRUE);
     g.dir=AppDir();if(g.dir.empty()){MessageBoxW(hwnd,L"Could not locate the current user's AppData folder.",kApp,MB_ICONERROR);return;}g.routesPath=g.dir+L"\\routes.json";g.settingsPath=g.dir+L"\\settings.json";g.appliedPath=g.dir+L"\\applied-routes.json";
-    LoadSettings();LoadRoutes();LoadApplied();SetWindowTextW(g.server,g.settings.server.c_str());SetWindowTextW(g.user,g.settings.username.c_str());SendMessageW(g.protocol,CB_SETCURSEL,g.settings.protocol,0);SendMessageW(g.remember,BM_SETCHECK,g.settings.remember?BST_CHECKED:BST_UNCHECKED,0);if(g.settings.remember){auto p=Unprotect(g.settings.encryptedPassword);SetWindowTextW(g.password,p.c_str());SecureZeroMemory(p.data(),p.size()*sizeof(wchar_t));}auto psk=Unprotect(g.settings.encryptedPsk);SetWindowTextW(g.psk,psk.c_str());SecureZeroMemory(psk.data(),psk.size()*sizeof(wchar_t));SetProtocolVisibility();RenderRoutes();CleanupStale();SetButtons();Log(L"Ready. Settings and routes are stored under %APPDATA%\\MyVpnApp.");
+    LoadSettings();LoadRoutes();LoadApplied();SetWindowTextW(g.server,g.settings.server.c_str());SetWindowTextW(g.user,g.settings.username.c_str());SendMessageW(g.protocol,CB_SETCURSEL,g.settings.protocol,0);SendMessageW(g.remember,BM_SETCHECK,g.settings.remember?BST_CHECKED:BST_UNCHECKED,0);if(g.settings.remember){auto p=Unprotect(g.settings.encryptedPassword);SetWindowTextW(g.password,p.c_str());SecureZeroMemory(p.data(),p.size()*sizeof(wchar_t));}auto psk=Unprotect(g.settings.encryptedPsk);SetWindowTextW(g.psk,psk.c_str());SecureZeroMemory(psk.data(),psk.size()*sizeof(wchar_t));SetProtocolVisibility();RenderRoutes();CleanupStale();SetButtons();Log(L"Ready. Settings and routes are stored under %APPDATA%\\SarmadiVpn.");
 }
 LRESULT CALLBACK WindowProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){switch(msg){
 case WM_CREATE:CreateUi(hwnd);return 0;
