@@ -27,10 +27,14 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "dotnet test failed with exit code $LASTEXITCODE." }
     }
 
+    dotnet restore $appProject --runtime win-x64 '-p:NuGetAudit=false' --ignore-failed-sources -m:1
+    if ($LASTEXITCODE -ne 0) { throw "Runtime-specific restore failed with exit code $LASTEXITCODE." }
+
     dotnet publish $appProject `
         --configuration Release `
         --runtime win-x64 `
         --self-contained true `
+        --no-restore `
         --output $publishDirectory `
         "-p:Version=$Version" `
         '-p:PublishSingleFile=true' `
