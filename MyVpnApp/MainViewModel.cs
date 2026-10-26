@@ -71,8 +71,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
     }
 
     public string StateText { get => _stateText; private set => Set(ref _stateText, value); }
-    public VpnState State { get => _state; private set { if (Set(ref _state, value)) { OnPropertyChanged(nameof(CanEditConnection)); ConnectCommand.Refresh(); DisconnectCommand.Refresh(); } } }
+    public VpnState State { get => _state; private set { if (Set(ref _state, value)) { OnPropertyChanged(nameof(CanEditConnection)); OnPropertyChanged(nameof(IsBusy)); ConnectCommand.Refresh(); DisconnectCommand.Refresh(); } } }
     public bool CanEditConnection => State is VpnState.Disconnected or VpnState.Error;
+    public bool IsBusy => State is VpnState.Connecting or VpnState.Disconnecting;
     public string Server { get => _server; set => Set(ref _server, value); }
     public string Username { get => _username; set => Set(ref _username, value); }
     public string Password { get => _password; set => Set(ref _password, value); }
@@ -146,6 +147,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
     {
         try
         {
+            State = VpnState.Disconnecting;
             StateText = "Disconnecting";
             var result = await _vpn.DisconnectAsync();
             Write(result.Message);

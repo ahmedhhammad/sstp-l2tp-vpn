@@ -1,7 +1,7 @@
 namespace MyVpnApp.Core;
 
 public enum VpnProtocol { Sstp, L2tp }
-public enum VpnState { Disconnected, Connecting, Connected, Error }
+public enum VpnState { Disconnected, Connecting, Connected, Disconnecting, Error }
 
 public sealed record RouteEntry(Guid Id, string Destination, string Label, bool Enabled);
 public sealed record VpnSettings(string Server, string Username, VpnProtocol Protocol, bool RememberCredentials, string? ProtectedPassword, string? ProtectedL2tpPsk = null);

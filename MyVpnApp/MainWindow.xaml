@@ -2,7 +2,8 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:core="clr-namespace:MyVpnApp.Core;assembly=MyVpnApp.Core"
- Title="MyVpnApp" Height="850" Width="980" MinHeight="680" MinWidth="760"
+ Title="MyVpnApp" Height="700" Width="820" MinHeight="660" MinWidth="780"
+ WindowStartupLocation="CenterScreen" WindowState="Normal"
  Background="#F3F5F4" Foreground="#202A30" Loaded="Window_Loaded" Closing="Window_Closing">
  <Window.Resources>
   <Style TargetType="GroupBox"><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#D4DCDA"/><Setter Property="Foreground" Value="#202A30"/><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,0,12"/></Style>
@@ -11,13 +12,29 @@
   <Style TargetType="TextBox"><Setter Property="Padding" Value="8,6"/><Setter Property="Margin" Value="0,4,10,8"/><Setter Property="MinWidth" Value="140"/></Style>
   <Style TargetType="PasswordBox"><Setter Property="Padding" Value="8,6"/><Setter Property="Margin" Value="0,4,10,8"/><Setter Property="MinWidth" Value="140"/></Style>
  </Window.Resources>
- <Grid Margin="22">
-  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="190"/></Grid.RowDefinitions>
+ <Viewbox Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Center">
+ <Grid Width="860" Height="700" Margin="22">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="150"/></Grid.RowDefinitions>
   <DockPanel Grid.Row="0" Margin="0,0,0,14">
    <StackPanel DockPanel.Dock="Left"><TextBlock Text="MyVpnApp" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Windows VPN and route manager" Foreground="#5E6A70" Margin="0,2,0,0"/></StackPanel>
    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+    <Grid x:Name="BusyArrow" Width="22" Height="22" Margin="0,0,6,0" Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
+     <Grid.RenderTransform><RotateTransform/></Grid.RenderTransform>
+     <TextBlock Text="↻" FontFamily="Segoe UI Symbol" FontSize="18" Width="22" Height="22" Foreground="#D69E00" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+     <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers>
+      <DataTrigger Binding="{Binding IsBusy}" Value="True">
+       <Setter Property="Visibility" Value="Visible"/>
+       <DataTrigger.EnterActions><BeginStoryboard Name="BusyArrowSpin"><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" From="0" To="360" Duration="0:0:0.8"/></Storyboard></BeginStoryboard></DataTrigger.EnterActions>
+       <DataTrigger.ExitActions><StopStoryboard BeginStoryboardName="BusyArrowSpin"/></DataTrigger.ExitActions>
+      </DataTrigger>
+     </Style.Triggers></Style></Grid.Style>
+    </Grid>
     <Ellipse Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center">
-     <Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="#748079"/><Style.Triggers><DataTrigger Binding="{Binding State}" Value="{x:Static core:VpnState.Connected}"><Setter Property="Fill" Value="#176B65"/></DataTrigger><DataTrigger Binding="{Binding State}" Value="{x:Static core:VpnState.Error}"><Setter Property="Fill" Value="#B13B32"/></DataTrigger></Style.Triggers></Style></Ellipse.Style>
+     <Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="#B13B32"/><Style.Triggers>
+      <DataTrigger Binding="{Binding State}" Value="{x:Static core:VpnState.Connected}"><Setter Property="Fill" Value="#22C55E"/></DataTrigger>
+      <DataTrigger Binding="{Binding State}" Value="{x:Static core:VpnState.Connecting}"><Setter Property="Fill" Value="#D69E00"/></DataTrigger>
+      <DataTrigger Binding="{Binding State}" Value="{x:Static core:VpnState.Disconnecting}"><Setter Property="Fill" Value="#D69E00"/></DataTrigger>
+     </Style.Triggers></Style></Ellipse.Style>
     </Ellipse>
     <TextBlock Text="{Binding StateText}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
    </StackPanel>
@@ -69,4 +86,5 @@
    <ListBox ItemsSource="{Binding Logs}" FontFamily="Consolas" FontSize="11" Background="#F7F9F8" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
   </GroupBox>
  </Grid>
+ </Viewbox>
 </Window>
