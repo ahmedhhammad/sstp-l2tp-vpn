@@ -1,5 +1,29 @@
+# .NET and Visual Studio outputs
 **/bin/
 **/obj/
-.dotnet-cli/
 .vs/
-artifacts/
+TestResults/
+**/artifacts/
+*.user
+*.suo
+*.cache
+
+# Local SDK state and generated release bundles
+.dotnet-cli/
+/dist/
+/artifacts/
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local secrets and runtime state
+.env
+*.pfx
+*.p12
+settings.json
+routes.json
+applied-routes.json

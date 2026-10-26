@@ -1,0 +1,40 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  managed:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore .\SarmadiVpn.sln
+
+      - name: Test
+        run: dotnet test .\SarmadiVpn.sln --configuration Release --no-restore
+
+      - name: Publish Windows x64 single-file executable
+        shell: pwsh
+        run: .\scripts\publish-release.ps1 -Version 0.0.${{ github.run_number }} -SkipTests
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SarmadiVpn-win-x64-ci
+          path: dist/0.0.${{ github.run_number }}/*
+          if-no-files-found: error
+          retention-days: 14

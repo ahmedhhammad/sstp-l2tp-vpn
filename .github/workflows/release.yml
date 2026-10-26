@@ -1,0 +1,40 @@
+name: Publish Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build, test, and package
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          .\scripts\publish-release.ps1 -Version $version
+
+      - name: Publish GitHub Release and attach executable
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $assets = Join-Path $PWD "dist\$version"
+          gh release create $env:GITHUB_REF_NAME `
+            (Join-Path $assets 'SarmadiVpn-win-x64.exe') `
+            (Join-Path $assets 'SHA256SUMS.txt') `
+            --title "SARMADI VPN $version" `
+            --generate-notes

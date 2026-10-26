@@ -1,67 +1,90 @@
 # SARMADI VPN
 
-SARMADI VPN is a Windows desktop client for SSTP and L2TP/IPsec using the Windows RAS client. It configures a Windows VPN profile and adds IPv4 split routes after the connection is established. The native build targets Windows 7 SP1 and later and has no .NET runtime dependency. The supplied Sarmadi logo is embedded in both builds.
+SARMADI VPN is a Windows desktop client for SSTP and L2TP/IPsec. It configures Windows' built-in Remote Access Service (RAS), connects with `rasdial`, and applies the user's IPv4 split-tunnel routes while connected. It does not implement VPN protocols or install a network driver.
 
-## Visual Studio: build and debug
+> **Preview:** The application and automated tests build successfully, but a live SSTP/L2TP server and end-to-end routing have not been verified by this project. Use the manual checklist below before relying on it.
 
-Open `native\SarmadiVpnNative.sln` in Visual Studio 2026 with **Desktop development with C++**, the MSVC x64 tools, and a Windows SDK installed. Choose **Debug | x64** and press **F5**. Start Visual Studio as administrator so the debugger can attach to the elevated app. The executable requests administrator elevation because route management and the NAT setting require it.
+## Download and run
 
-The managed solution is `SarmadiVpn.sln`; it contains the .NET 8 WPF application and xUnit tests. In that solution select **SARMADI VPN** (the WPF app) as the startup project. `SarmadiVpn.Core` is a class library and cannot run directly.
+Download `SarmadiVpn-win-x64.exe` and its `SHA256SUMS.txt` from the project's [GitHub Releases](https://github.com/ahmedhhammad/sstp-l2tp-vpn/releases). Releases are created by the tag workflow for version tags (`v*`). The executable is a self-contained, single-file .NET 8 WPF application for 64-bit Windows; no .NET runtime installation is needed.
 
-## Native build
+The app requests administrator access at launch because it manages Windows VPN profiles, routes, and an optional L2TP NAT registry setting. Review the source and release checksum before running it. There is no installer or automatic update service.
 
-In a Visual Studio Developer PowerShell:
+## Features
 
-```powershell
-msbuild .\native\SarmadiVpnNative.sln /t:Build /p:Configuration=Release /p:Platform=x64
-```
+- Connect to SSTP or L2TP/IPsec using the Windows RAS client.
+- Remember credentials encrypted with Windows DPAPI for the current Windows user.
+- Add enabled IPv4 destination routes in address or CIDR form. Routes are installed after connection and removed at disconnect; stale app-owned routes are cleaned up on the next launch.
+- Detect connection drops and show connection and per-route status in the activity log.
+- Set the Windows L2TP NAT traversal option when required (a reboot is needed).
 
-The standalone, statically linked executable is `native\bin\Release\SarmadiVpn.exe`. It is a single-file Win32 application. The project links the C runtime statically and embeds `native\app.manifest` with `requireAdministrator`. Release uses size optimization. `native\run-tests.ps1` compiles and runs the native logic checks.
+## SSTP certificate requirements
 
-The managed .NET WPF application can be built and published separately:
+Enter the DNS hostname that appears in the SSTP server certificate. Windows must trust the certificate chain, and the certificate must be valid and configured for server authentication. RAS error 778 means Windows could not verify the server identity; it is not evidence that the username or password is wrong. Ask the VPN server administrator to verify the certificate, chain, expiry, and SSTP binding. SARMADI VPN does not disable certificate validation.
+
+## Build from source
+
+Requirements: Windows 10 or 11 x64, the .NET 8 SDK, and (for Visual Studio) the **.NET desktop development** workload. Open `SarmadiVpn.sln`, set **SARMADI VPN** as the startup project, and start Visual Studio elevated when testing route or VPN profile operations.
+
+From PowerShell at the repository root:
 
 ```powershell
 dotnet restore .\SarmadiVpn.sln
-dotnet build .\SarmadiVpn.sln -c Release
+dotnet build .\SarmadiVpn\SarmadiVpn.csproj -c Debug
 dotnet run --project .\SarmadiVpn\SarmadiVpn.csproj
-dotnet publish .\SarmadiVpn\SarmadiVpn.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+dotnet test .\SarmadiVpn.sln -c Release
 ```
 
-The .NET 8 build does not support Windows 7; use the native project for the Windows 7 target.
-
-## Automated checks
+Build a self-contained, single-file x64 preview executable and SHA-256 checksum:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\native\run-tests.ps1
-$env:DOTNET_CLI_HOME = (Join-Path (Get-Location) '.dotnet-cli')
-dotnet test .\SarmadiVpn.sln -c Release --no-restore
+.\scripts\publish-release.ps1 -Version 0.1.0-preview.1
 ```
 
-The native checks cover IPv4 CIDR parsing and normalization, dotted masks, invalid input, DPAPI encryption/decryption, and route-list save/reload. The managed xUnit suite additionally tests route command building, route retry and cleanup behavior, gateway parsing, settings persistence, and credential protection. Neither suite can prove behavior against a live VPN server; use [MANUAL_TESTS.md](MANUAL_TESTS.md) for Windows verification.
+The output is written under `dist\0.1.0-preview.1\`. To publish another build, pass a new version string. The script runs the xUnit suite before publishing.
 
-## Data and credentials
+To create a GitHub release after the repository is pushed, push a version tag such as `v0.1.0-preview.1`. The Windows release workflow runs the tests, builds the self-contained EXE, and attaches it and its checksum file to that tag's GitHub Release. Pull requests and pushes to `main` also build the EXE and retain it as a short-lived CI artifact.
 
-Application data remains under `%APPDATA%\MyVpnApp` so upgrades keep existing routes, settings, and encrypted credentials:
+## Configure a VPN
 
-- `settings.json` contains the server, username, protocol, remember choice, and DPAPI-protected secrets. Passwords and PSKs are never written as plaintext.
-- `routes.json` stores route destinations, labels, and enabled state. Routes persist until explicitly deleted.
-- `applied-routes.json` tracks routes installed by the current run so they can be removed on disconnect or at the next start after a crash.
+1. Enter the VPN server address, username, password, and protocol. For L2TP/IPsec, enter the pre-shared key.
+2. Optionally select **Remember credentials**. The password and L2TP key are protected using DPAPI and can only be decrypted by the same Windows user on the same machine.
+3. Add one or more IPv4 destinations such as `192.168.1.50` or `192.168.1.0/24`. `0.0.0.0/0` is rejected to prevent replacing the default route.
+4. Connect. The client discovers the PPP interface and peer from Windows networking information, then applies enabled routes. Check the activity log and route status if discovery or route installation fails.
 
-Writes use a temporary file and replace/move operation. Corrupt JSON data is backed up with a `.corrupt-<timestamp>` suffix when detected.
+The app keeps existing user data at `%APPDATA%\MyVpnApp` so upgrades retain saved settings, routes, and encrypted credentials. The directory name is retained for compatibility; it is not the product or VPN profile name.
 
 ## L2TP behind NAT
 
-Use **Enable L2TP behind NAT** to set `HKLM\SYSTEM\CurrentControlSet\Services\PolicyAgent\AssumeUDPEncapsulationContextOnSendRule` to DWORD `2`. Restart Windows before connecting. The VPN server and firewalls must also permit L2TP/IPsec traffic.
+Use **Enable L2TP behind NAT** to set `HKLM\SYSTEM\CurrentControlSet\Services\PolicyAgent\AssumeUDPEncapsulationContextOnSendRule` to DWORD `2`. Restart Windows before connecting. The server and network firewalls must also allow L2TP/IPsec traffic.
 
-## SSTP server identity errors
+## Tests and manual verification
 
-RAS error 778 means Windows could not verify the server identity; it is not proof of a bad username or password. The SSTP server must present a valid, unexpired TLS certificate trusted by Windows, and the certificate DNS name must match the server address entered in the app. Use the matching DNS hostname and ask the server administrator to check its certificate chain and SSTP certificate binding. The app does not disable certificate validation.
+```powershell
+dotnet test .\SarmadiVpn.sln -c Release
+```
+
+The xUnit suite covers CIDR parsing, persistence, route command behavior, gateway parsing, credential protection, and VPN service behavior using a mock process runner. It does not prove connectivity to a real VPN server. Follow [MANUAL_TESTS.md](MANUAL_TESTS.md) on a Windows machine with a test VPN endpoint and reachable routed hosts.
+
+## Repository layout
+
+- `SarmadiVpn/` — WPF desktop client.
+- `SarmadiVpn.Core/` — VPN, route, settings, and credential logic.
+- `SarmadiVpn.Tests/` — xUnit tests.
+- `native/` — separate native Win32 alternative for users who need a build without .NET. It uses the Windows RAS and IP Helper APIs and has its own Visual Studio solution and test harness.
+- `.github/workflows/` — pull request CI and tag-based Windows release publishing.
+
+The native alternative has a separate build and manual verification path; the downloadable x64 release is the managed WPF app described above.
 
 ## Known limitations
 
-- A live SSTP/L2TP server, credentials, and reachable routed hosts are needed for end-to-end checks. No live VPN connection was available in the build environment.
-- Native tests cover CIDR, DPAPI, and persistence logic, but do not mock the native RAS and IP Helper calls. The 34-test xUnit suite covers the managed route manager; actual VPN adapter discovery and route installation still need the manual checks.
-- Windows 7 uses its legacy networking APIs and needs current servicing updates and TLS 1.2 enabled for modern SSTP endpoints. See the SSTP certificate help button for common certificate failures.
-- A failed route cleanup remains in the applied-route record for a later retry. Windows route APIs identify a route by its route tuple, so another program installing an identical route can make ownership ambiguous.
-- If Windows cannot match the PPP local address to a network interface, automatic route setup is reported as failed rather than guessing an interface.
-- The embedded elevation manifest prompts at launch. The app does not install a VPN driver or alter server configuration.
+- Live SSTP/L2TP authentication, certificate validation, and remote route reachability require a real VPN server and have not been verified in CI.
+- The app requires administrator elevation for its Windows networking operations.
+- Saved DPAPI credentials do not transfer to another Windows user or computer.
+- Route ownership can be ambiguous if another program adds an identical route.
+- A route that Windows refuses to remove remains recorded for a later cleanup attempt.
+- The WPF .NET 8 application is for supported current Windows versions. Use the separate native project for its Windows 7 SP1 target.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build and pull request guidance and [SECURITY.md](SECURITY.md) for vulnerability reporting. Do not include VPN credentials, PSKs, private certificates, or unredacted connection logs in issues.
