@@ -56,6 +56,48 @@ public sealed class VpnServiceTests
     }
 
     [Fact]
+    public async Task DisconnectUsesRasdialAndWaitsForWindowsToReportDisconnected()
+    {
+        var statusChecks = 0;
+        var runner = new FakeRunner(spec =>
+        {
+            if (spec.FileName == "rasdial.exe") return new ProcessResult(0, "Disconnected", "");
+            if (spec.DisplayCommand?.Contains("check VPN connection status", StringComparison.Ordinal) == true)
+                return new ProcessResult(0, ++statusChecks < 3 ? "VPN_STATUS_CONNECTED" : "VPN_STATUS_DISCONNECTED", "");
+            return new ProcessResult(0, "", "");
+        });
+        var service = new VpnService(runner, disconnectPollInterval: TimeSpan.Zero, disconnectPollAttempts: 6);
+
+        var result = await service.DisconnectAsync();
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.IsConnected);
+        Assert.Equal(3, statusChecks);
+        Assert.Contains(runner.Commands, x => x.FileName == "rasdial.exe" && x.Arguments.SequenceEqual(["MyVpnApp", "/disconnect"]));
+    }
+
+    [Fact]
+    public async Task DisconnectRetriesOnceAndDoesNotClaimSuccessWhileStillConnected()
+    {
+        var disconnectCommands = 0;
+        var runner = new FakeRunner(spec =>
+        {
+            if (spec.FileName == "rasdial.exe") { disconnectCommands++; return new ProcessResult(0, "", ""); }
+            if (spec.DisplayCommand?.Contains("check VPN connection status", StringComparison.Ordinal) == true)
+                return new ProcessResult(0, "VPN_STATUS_CONNECTED", "");
+            return new ProcessResult(0, "", "");
+        });
+        var service = new VpnService(runner, disconnectPollInterval: TimeSpan.Zero, disconnectPollAttempts: 4);
+
+        var result = await service.DisconnectAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.IsConnected);
+        Assert.Equal(2, disconnectCommands);
+        Assert.Contains("still reports the VPN connected", result.Message);
+    }
+
+    [Fact]
     public void PowerShellCliXmlErrorsAreConvertedToReadableText()
     {
         const string clixml = "#< CLIXML\r\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><Obj S=\"progress\"><MS><S N=\"Message\">Preparing modules</S></MS></Obj><Obj S=\"Error\"><TN><T>System.Management.Automation.ErrorRecord</T></TN><ToString>Set-VpnConnection : Missing argument for parameter SplitTunneling.</ToString></Obj></Objs>";

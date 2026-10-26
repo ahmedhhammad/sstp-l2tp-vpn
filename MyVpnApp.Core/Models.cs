@@ -17,7 +17,7 @@ public sealed record ProcessResult(int ExitCode, string StandardOutput, string S
     public string CombinedOutput => string.Join(Environment.NewLine, new[] { StandardOutput, StandardError }.Where(x => !string.IsNullOrWhiteSpace(x)));
 }
 public sealed record RouteApplyResult(string Destination, bool Applied, string Message);
-public sealed record VpnOperationResult(bool Succeeded, int ExitCode, string Message);
+public sealed record VpnOperationResult(bool Succeeded, int ExitCode, string Message, bool? IsConnected = null);
 
 public interface IProcessRunner
 {

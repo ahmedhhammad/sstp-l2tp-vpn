@@ -1,14 +1,14 @@
 # Manual test checklist
 
-Run these checks on a Windows 10 or 11 machine with administrator access and working VPN server details. Record the Windows build, VPN server type, and result for each protocol.
+Run these checks on Windows 7 SP1, Windows 10, and Windows 11 where available, with administrator access and working VPN server details. Launch `native\bin\Release\MyVpnApp.exe` (or run the Debug x64 target from Visual Studio) and record the Windows build, VPN server type, and result for each protocol.
 
 1. **Connect with SSTP**
    - Select SSTP, enter the server, username, and password, then choose **Connect**.
-   - Expected: state changes through Connecting to Connected; the log shows profile setup and `rasdial` output. A bad password, unreachable server, or SSTP certificate problem displays the exit code and Windows error output.
+   - Expected: state changes through Connecting to Connected; the log shows the Windows RAS profile setup and connection state. A bad password, unreachable server, or SSTP certificate problem displays its RAS error code and Windows message.
 
 2. **Connect with L2TP/IPsec**
    - Disconnect, choose L2TP / IPsec, enter the PSK and user credentials, and connect.
-   - Expected: the profile uses L2TP with MS-CHAPv2 and split tunneling. A PSK negotiation failure is reported with the `rasdial` error code and output.
+   - Expected: the Windows RAS profile uses L2TP with MS-CHAPv2 and split tunneling. A PSK negotiation failure is reported with the RAS error code and Windows message.
 
 3. **Add a split route**
    - Add `192.168.1.0/24`, connect, and run `route print` in an elevated terminal.

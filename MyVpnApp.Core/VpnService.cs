@@ -2,10 +2,12 @@ namespace MyVpnApp.Core;
 
 using System.Text.RegularExpressions;
 
-public sealed class VpnService(IProcessRunner runner, IAppLogger? logger = null)
+public sealed class VpnService(IProcessRunner runner, IAppLogger? logger = null, TimeSpan? disconnectPollInterval = null, int disconnectPollAttempts = 12)
 {
     public const string ProfileName = "MyVpnApp";
     private readonly IAppLogger _logger = logger ?? new NullAppLogger();
+    private readonly TimeSpan _disconnectPollInterval = disconnectPollInterval ?? TimeSpan.FromMilliseconds(500);
+    private readonly int _disconnectPollAttempts = Math.Max(1, disconnectPollAttempts);
 
     public async Task<VpnOperationResult> ConnectAsync(VpnSettings settings, string password, string? l2tpPsk = null, CancellationToken cancellationToken = default)
     {
@@ -26,14 +28,50 @@ public sealed class VpnService(IProcessRunner runner, IAppLogger? logger = null)
         return new(false, rasdial.ExitCode, FriendlyError(rasdial.ExitCode, rasdial.CombinedOutput, "rasdial failed"));
     }
 
-    public async Task<ProcessResult> DisconnectAsync(CancellationToken cancellationToken = default) =>
-        await runner.RunAsync(new ProcessSpec("rasdial.exe", [ProfileName, "/disconnect"], "rasdial.exe MyVpnApp /disconnect"), cancellationToken);
+    public async Task<VpnOperationResult> DisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        var disconnectSpec = new ProcessSpec("rasdial.exe", [ProfileName, "/disconnect"], "rasdial.exe MyVpnApp /disconnect");
+        var command = await runner.RunAsync(disconnectSpec, cancellationToken);
+        var lastStatus = (bool?)null;
+        var retried = false;
+
+        for (var attempt = 0; attempt < _disconnectPollAttempts; attempt++)
+        {
+            lastStatus = await GetConnectedStatusAsync(cancellationToken);
+            if (lastStatus == false)
+            {
+                var detail = command.Succeeded ? "VPN disconnected." : $"Windows reports the VPN disconnected, although rasdial returned exit code {command.ExitCode}: {command.CombinedOutput.Trim()}";
+                return new(true, command.ExitCode, detail, false);
+            }
+
+            if (lastStatus == true && !retried && attempt >= Math.Max(1, _disconnectPollAttempts / 3))
+            {
+                _logger.Write("VPN still reports connected; retrying rasdial disconnect once.");
+                var retry = await runner.RunAsync(disconnectSpec, cancellationToken);
+                if (!retry.Succeeded) _logger.Write($"rasdial disconnect retry returned {retry.ExitCode}: {retry.CombinedOutput}");
+                retried = true;
+            }
+
+            if (attempt + 1 < _disconnectPollAttempts) await Task.Delay(_disconnectPollInterval, cancellationToken);
+        }
+
+        var message = lastStatus == true
+            ? $"Windows still reports the VPN connected after rasdial disconnect (exit code {command.ExitCode}). Check the activity log, then try Disconnect again. {command.CombinedOutput.Trim()}"
+            : $"Windows did not confirm whether the VPN disconnected (rasdial exit code {command.ExitCode}). Routes were kept for safety. {command.CombinedOutput.Trim()}";
+        return new(false, command.ExitCode == 0 ? 1 : command.ExitCode, message, lastStatus);
+    }
 
     public async Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default)
+        => await GetConnectedStatusAsync(cancellationToken) == true;
+
+    public async Task<bool?> GetConnectedStatusAsync(CancellationToken cancellationToken = default)
     {
-        var script = $"$ErrorActionPreference='SilentlyContinue'; $c=Get-VpnConnection -Name {PowerShell.Quote(ProfileName)}; if ($c -and $c.ConnectionStatus -eq 'Connected') {{ 'Connected' }} else {{ 'Disconnected' }}";
+        var script = $"$ErrorActionPreference='SilentlyContinue'; $c=Get-VpnConnection -Name {PowerShell.Quote(ProfileName)} -ErrorAction SilentlyContinue; if ($c -and $c.ConnectionStatus -eq 'Connected') {{ 'VPN_STATUS_CONNECTED' }} else {{ 'VPN_STATUS_DISCONNECTED' }}";
         var result = await runner.RunAsync(PowerShell.Encoded(script, "check VPN connection status"), cancellationToken);
-        return result.Succeeded && result.StandardOutput.Contains("Connected", StringComparison.OrdinalIgnoreCase) && !result.StandardOutput.Contains("Disconnected", StringComparison.OrdinalIgnoreCase);
+        if (!result.Succeeded) return null;
+        if (result.StandardOutput.Contains("VPN_STATUS_CONNECTED", StringComparison.OrdinalIgnoreCase)) return true;
+        if (result.StandardOutput.Contains("VPN_STATUS_DISCONNECTED", StringComparison.OrdinalIgnoreCase)) return false;
+        return null;
     }
 
     private static string FriendlyError(int code, string output, string fallback)

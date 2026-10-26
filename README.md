@@ -1,60 +1,63 @@
 # MyVpnApp
 
-MyVpnApp is a Windows desktop client for the built-in Windows VPN stack. It configures an SSTP or L2TP/IPsec profile, connects with `rasdial`, and manages user-defined IPv4 split-tunnel routes. It does not implement VPN protocols.
+MyVpnApp is a Windows desktop GUI for SSTP and L2TP/IPsec using the Windows RAS client. It configures a Windows VPN profile and adds IPv4 split routes after the connection is established. The native build targets Windows 7 SP1 and later and has no .NET runtime dependency.
 
-## Requirements
+## Visual Studio: build and debug
 
-- Windows 10 or 11, x64
-- .NET 8 SDK
-- Administrator rights (the application manifest requests elevation)
-- A reachable SSTP or L2TP/IPsec server and valid credentials
+Open `native\MyVpnAppNative.sln` in Visual Studio 2026 with **Desktop development with C++**, the MSVC x64 tools, and a Windows SDK installed. Choose **Debug | x64** and press **F5**. Start Visual Studio as administrator so the debugger can attach to the elevated app. The executable requests administrator elevation because route management and the NAT setting require it.
 
-## Build and run
+The original managed solution is still available as `MyVpnApp.sln`; it contains the .NET 8 WPF application and xUnit tests. In that solution select **MyVpnApp** (the WPF app) as the startup project. `MyVpnApp.Core` is a class library and cannot run directly.
 
-From the repository root in PowerShell:
+## Native build
+
+In a Visual Studio Developer PowerShell:
+
+```powershell
+msbuild .\native\MyVpnAppNative.sln /t:Build /p:Configuration=Release /p:Platform=x64
+```
+
+The standalone, statically linked executable is `native\bin\Release\MyVpnApp.exe`. It is a single-file Win32 application. The project links the C runtime statically and embeds `native\app.manifest` with `requireAdministrator`. Release uses size optimization. `native\run-tests.ps1` compiles and runs the native logic checks.
+
+The original .NET WPF application can be built and published separately:
 
 ```powershell
 dotnet restore .\MyVpnApp.sln
 dotnet build .\MyVpnApp.sln -c Release
 dotnet run --project .\MyVpnApp\MyVpnApp.csproj
-```
-
-The application stores its files under `%APPDATA%\MyVpnApp`:
-
-- `settings.json` stores the server, username, protocol, and remember-credentials choice. A remembered password and the L2TP PSK are encrypted with Windows DPAPI for the current user.
-- `routes.json` stores the route list. The file changes only when the user adds, deletes, or toggles a route.
-- `applied-routes.json` records routes added during a session so normal exit and the next launch can clean them up.
-
-Writes use a temporary file followed by a replace. A corrupt settings or route list is moved aside with a `.corrupt-<timestamp>` suffix.
-
-## Tests
-
-```powershell
-dotnet test .\MyVpnApp.sln -c Release
-```
-
-The tests cover CIDR parsing and masks, JSON persistence and recovery, route command construction and retries, gateway parsing, and DPAPI round trips. DPAPI tests require Windows and run under the current Windows user.
-
-## Publish a single-file executable
-
-```powershell
 dotnet publish .\MyVpnApp\MyVpnApp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
-The executable is produced in `MyVpnApp\bin\Release\net8.0-windows\win-x64\publish\MyVpnApp.exe`.
+The .NET 8 build does not support Windows 7; use the native project for the Windows 7 target.
+
+## Automated checks
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native\run-tests.ps1
+$env:DOTNET_CLI_HOME = (Join-Path (Get-Location) '.dotnet-cli')
+dotnet test .\MyVpnApp.sln -c Release --no-restore
+```
+
+The native checks cover IPv4 CIDR parsing and normalization, dotted masks, invalid input, DPAPI encryption/decryption, and route-list save/reload. The managed xUnit suite additionally tests route command building, route retry and cleanup behavior, gateway parsing, settings persistence, and credential protection. Neither suite can prove behavior against a live VPN server; use [MANUAL_TESTS.md](MANUAL_TESTS.md) for Windows verification.
+
+## Data and credentials
+
+Application data is stored under `%APPDATA%\MyVpnApp`:
+
+- `settings.json` contains the server, username, protocol, remember choice, and DPAPI-protected secrets. Passwords and PSKs are never written as plaintext.
+- `routes.json` stores route destinations, labels, and enabled state. Routes persist until explicitly deleted.
+- `applied-routes.json` tracks routes installed by the current run so they can be removed on disconnect or at the next start after a crash.
+
+Writes use a temporary file and replace/move operation. Corrupt JSON data is backed up with a `.corrupt-<timestamp>` suffix when detected.
 
 ## L2TP behind NAT
 
-Use **Enable L2TP behind NAT** to set `HKLM\SYSTEM\CurrentControlSet\Services\PolicyAgent\AssumeUDPEncapsulationContextOnSendRule` to DWORD `2`. The app runs elevated, but Windows must be restarted before the setting takes effect. The VPN server and network firewall must also allow the required L2TP/IPsec traffic.
-
-## Connection errors
-
-Profile creation or update errors are reported separately from rasdial connection errors. The activity log removes PowerShell's CLIXML wrapper and shows the readable Windows error text. rasdial failures include the RAS error code when Windows provides one, with targeted guidance for credential, SSTP certificate, L2TP/IPsec, and DNS or reachability problems. Passwords and L2TP keys are hidden from command logs and redacted from process output.
+Use **Enable L2TP behind NAT** to set `HKLM\SYSTEM\CurrentControlSet\Services\PolicyAgent\AssumeUDPEncapsulationContextOnSendRule` to DWORD `2`. Restart Windows before connecting. The VPN server and firewalls must also permit L2TP/IPsec traffic.
 
 ## Known limitations
 
-- A live SSTP/L2TP server and credentials are required for end-to-end connection checks. The application relies on Windows VPN cmdlets and `rasdial`, so behavior can vary with Windows policy, server configuration, certificates, and firewall rules.
-- Windows `route delete` identifies a route by destination and mask. If another application installs the same destination and mask, Windows may not distinguish ownership during cleanup.
-- Forced process termination cannot run cleanup. The applied-route record allows the next app launch to attempt cleanup; cleanup still depends on Windows accepting the delete command.
-- `ipconfig` does not report an interface index. If PowerShell cannot identify the active VPN adapter, gateway discovery fails and route application reports the error rather than guessing an interface.
-- The app profile is named `MyVpnApp`; an existing profile with that name is updated when connecting.
+- A live SSTP/L2TP server, credentials, and reachable routed hosts are needed for end-to-end checks. No live VPN connection was available in the build environment.
+- Native tests cover CIDR, DPAPI, and persistence logic, but do not mock the native RAS and IP Helper calls. The 32-test xUnit suite covers the legacy managed route manager; actual native route installation and cleanup still need the manual checks.
+- Windows 7 uses its legacy networking APIs and needs current servicing updates and TLS 1.2 enabled for modern SSTP endpoints. See the SSTP certificate help button for common certificate failures.
+- A failed route cleanup remains in the applied-route record for a later retry. Windows route APIs identify a route by its route tuple, so another program installing an identical route can make ownership ambiguous.
+- If Windows cannot match the PPP local address to a network interface, automatic route setup is reported as failed rather than guessing an interface.
+- The embedded elevation manifest prompts at launch. The app does not install a VPN driver or alter server configuration.

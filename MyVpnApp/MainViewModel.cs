@@ -63,11 +63,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
         var gatewayResolver = new GatewayResolver(runner, this);
         _vpn = new VpnService(runner, this);
         _routeManager = new RouteManager(runner, gatewayResolver, Path.Combine(_dataDirectory, "applied-routes.json"), this);
-        ConnectCommand = new AsyncCommand(ConnectAsync, () => State is VpnState.Disconnected or VpnState.Error);
-        DisconnectCommand = new AsyncCommand(DisconnectAsync, () => State is VpnState.Connected or VpnState.Connecting);
-        AddRouteCommand = new AsyncCommand(AddRouteAsync);
-        DeleteRouteCommand = new AsyncCommand(DeleteRouteAsync, () => SelectedRoute is not null);
-        NatCommand = new AsyncCommand(EnableNatTraversalAsync);
+        ConnectCommand = new AsyncCommand(ConnectAsync, () => State is VpnState.Disconnected or VpnState.Error, HandleCommandError);
+        DisconnectCommand = new AsyncCommand(DisconnectAsync, () => State is VpnState.Connected or VpnState.Connecting or VpnState.Error, HandleCommandError);
+        AddRouteCommand = new AsyncCommand(AddRouteAsync, onError: HandleCommandError);
+        DeleteRouteCommand = new AsyncCommand(DeleteRouteAsync, () => SelectedRoute is not null, HandleCommandError);
+        NatCommand = new AsyncCommand(EnableNatTraversalAsync, onError: HandleCommandError);
     }
 
     public string StateText { get => _stateText; private set => Set(ref _stateText, value); }
@@ -110,10 +110,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
     {
         _pollCancellation.Cancel();
         await SaveSettingsAsync();
-        if (_wasConnected || State == VpnState.Connected)
+        if (_wasConnected || State is VpnState.Connected or VpnState.Connecting)
         {
-            await _vpn.DisconnectAsync();
+            var result = await _vpn.DisconnectAsync();
+            if (!result.Succeeded) Write("App is closing while disconnect could not be confirmed: " + result.Message);
             await _routeManager.CleanupAllAsync();
+            _wasConnected = false;
         }
     }
 
@@ -144,18 +146,27 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
     {
         try
         {
+            StateText = "Disconnecting";
             var result = await _vpn.DisconnectAsync();
-            Write(result.Succeeded ? "VPN disconnected." : $"rasdial disconnect returned {result.ExitCode}: {result.CombinedOutput}");
-            if (!result.Succeeded && await _vpn.IsConnectedAsync())
+            Write(result.Message);
+            if (!result.Succeeded)
             {
-                Write("Windows still reports the VPN connected; keeping its routes until the connection is down.");
+                State = result.IsConnected == true || _wasConnected ? VpnState.Connected : VpnState.Error;
+                StateText = result.IsConnected == true || _wasConnected ? "Connected" : "Error";
+                MessageBox.Show(result.Message, "VPN disconnect failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             await _routeManager.CleanupAllAsync();
             _wasConnected = false; State = VpnState.Disconnected; StateText = "Disconnected";
             foreach (var route in Routes) route.Status = "Not applied";
         }
-        catch (Exception ex) { Write("Disconnect failed: " + ex.Message); }
+        catch (Exception ex)
+        {
+            Write("Disconnect failed: " + ex);
+            State = _wasConnected ? VpnState.Connected : VpnState.Error;
+            StateText = _wasConnected ? "Connected" : "Error";
+            MessageBox.Show("Could not disconnect the VPN. " + ex.Message, "VPN disconnect failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private async Task ApplyRoutesAsync()
@@ -268,6 +279,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
             Logs.Add($"{DateTime.Now:HH:mm:ss}  {message}");
             while (Logs.Count > 500) Logs.RemoveAt(0);
         });
+    }
+
+    private void HandleCommandError(Exception ex)
+    {
+        Write("Command failed: " + ex);
+        MessageBox.Show("The requested operation failed. " + ex.Message, "Operation failed", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)

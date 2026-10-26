@@ -18,10 +18,17 @@ public partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        await _viewModel.InitializeAsync();
-        PasswordInput.Password = _viewModel.Password;
-        PskInput.Password = _viewModel.L2tpPsk;
-        UpdateL2tpVisibility();
+        try
+        {
+            await _viewModel.InitializeAsync();
+            PasswordInput.Password = _viewModel.Password;
+            PskInput.Password = _viewModel.L2tpPsk;
+            UpdateL2tpVisibility();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("MyVpnApp could not finish startup. " + ex.Message, "Startup failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -44,8 +51,18 @@ public partial class MainWindow : Window
         if (_closing) return;
         e.Cancel = true;
         IsEnabled = false;
-        await _viewModel.ShutdownAsync();
-        _closing = true;
-        Close();
+        try
+        {
+            await _viewModel.ShutdownAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("VPN shutdown cleanup did not complete. " + ex.Message, "Shutdown cleanup failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _closing = true;
+            Close();
+        }
     }
 }
