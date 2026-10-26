@@ -10,7 +10,7 @@ public sealed record GatewayInfo(int InterfaceIndex, string? Gateway, string Sou
     public string RouteGateway => string.IsNullOrWhiteSpace(Gateway) ? "0.0.0.0" : Gateway;
 }
 public sealed record AppliedRoute(string Destination, string Netmask);
-public sealed record ProcessSpec(string FileName, IReadOnlyList<string> Arguments, string? DisplayCommand = null, IReadOnlyList<string>? SensitiveValues = null);
+public sealed record ProcessSpec(string FileName, IReadOnlyList<string> Arguments, string? DisplayCommand = null, IReadOnlyList<string>? SensitiveValues = null, bool SuppressLogging = false);
 public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError)
 {
     public bool Succeeded => ExitCode == 0;
@@ -39,7 +39,7 @@ public sealed class ProcessRunner(IAppLogger logger) : IProcessRunner
     public async Task<ProcessResult> RunAsync(ProcessSpec spec, CancellationToken cancellationToken = default)
     {
         var display = spec.DisplayCommand ?? string.Join(" ", new[] { spec.FileName }.Concat(spec.Arguments));
-        logger.Write("> " + display);
+        if (!spec.SuppressLogging) logger.Write("> " + display);
         using var process = new System.Diagnostics.Process
         {
             StartInfo = new System.Diagnostics.ProcessStartInfo
@@ -72,12 +72,12 @@ public sealed class ProcessRunner(IAppLogger logger) : IProcessRunner
                 standardError = standardError.Replace(secret, "<redacted>", StringComparison.Ordinal);
             }
             var result = new ProcessResult(process.ExitCode, standardOutput, standardError);
-            logger.Write(result.CombinedOutput.Length == 0 ? $"Exit code: {result.ExitCode}" : result.CombinedOutput);
+            if (!spec.SuppressLogging) logger.Write(result.CombinedOutput.Length == 0 ? $"Exit code: {result.ExitCode}" : result.CombinedOutput);
             return result;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
-            logger.Write(ex.Message);
+            if (!spec.SuppressLogging) logger.Write(ex.Message);
             return new ProcessResult(-1, "", ex.Message);
         }
     }

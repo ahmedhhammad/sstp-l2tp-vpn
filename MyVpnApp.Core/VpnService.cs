@@ -8,6 +8,7 @@ public sealed class VpnService(IProcessRunner runner, IAppLogger? logger = null,
     private readonly IAppLogger _logger = logger ?? new NullAppLogger();
     private readonly TimeSpan _disconnectPollInterval = disconnectPollInterval ?? TimeSpan.FromMilliseconds(500);
     private readonly int _disconnectPollAttempts = Math.Max(1, disconnectPollAttempts);
+    private int? _lastStatusFailure;
 
     public async Task<VpnOperationResult> ConnectAsync(VpnSettings settings, string password, string? l2tpPsk = null, CancellationToken cancellationToken = default)
     {
@@ -67,10 +68,24 @@ public sealed class VpnService(IProcessRunner runner, IAppLogger? logger = null,
     public async Task<bool?> GetConnectedStatusAsync(CancellationToken cancellationToken = default)
     {
         var script = $"$ErrorActionPreference='SilentlyContinue'; $c=Get-VpnConnection -Name {PowerShell.Quote(ProfileName)} -ErrorAction SilentlyContinue; if ($c -and $c.ConnectionStatus -eq 'Connected') {{ 'VPN_STATUS_CONNECTED' }} else {{ 'VPN_STATUS_DISCONNECTED' }}";
-        var result = await runner.RunAsync(PowerShell.Encoded(script, "check VPN connection status"), cancellationToken);
-        if (!result.Succeeded) return null;
-        if (result.StandardOutput.Contains("VPN_STATUS_CONNECTED", StringComparison.OrdinalIgnoreCase)) return true;
-        if (result.StandardOutput.Contains("VPN_STATUS_DISCONNECTED", StringComparison.OrdinalIgnoreCase)) return false;
+        var statusCommand = PowerShell.Encoded(script, "check VPN connection status");
+        var result = await runner.RunAsync(statusCommand with { SuppressLogging = true }, cancellationToken);
+        if (!result.Succeeded)
+        {
+            if (_lastStatusFailure != result.ExitCode)
+            {
+                _logger.Write($"VPN status check failed (exit {result.ExitCode}): {result.CombinedOutput.Trim()}");
+                _lastStatusFailure = result.ExitCode;
+            }
+            return null;
+        }
+        if (result.StandardOutput.Contains("VPN_STATUS_CONNECTED", StringComparison.OrdinalIgnoreCase)) { _lastStatusFailure = null; return true; }
+        if (result.StandardOutput.Contains("VPN_STATUS_DISCONNECTED", StringComparison.OrdinalIgnoreCase)) { _lastStatusFailure = null; return false; }
+        if (_lastStatusFailure != int.MinValue)
+        {
+            _logger.Write("VPN status check returned no recognized connection state; keeping the last known state.");
+            _lastStatusFailure = int.MinValue;
+        }
         return null;
     }
 

@@ -74,6 +74,8 @@ public sealed class VpnServiceTests
         Assert.False(result.IsConnected);
         Assert.Equal(3, statusChecks);
         Assert.Contains(runner.Commands, x => x.FileName == "rasdial.exe" && x.Arguments.SequenceEqual(["MyVpnApp", "/disconnect"]));
+        Assert.All(runner.Commands.Where(x => x.DisplayCommand?.Contains("check VPN connection status", StringComparison.Ordinal) == true),
+            x => Assert.True(x.SuppressLogging));
     }
 
     [Fact]

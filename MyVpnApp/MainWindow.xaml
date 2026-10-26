@@ -24,17 +24,17 @@
   </DockPanel>
 
   <GroupBox Grid.Row="1" Header="VPN connection">
-   <Grid IsEnabled="{Binding CanEditConnection}">
+   <Grid>
     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel Grid.Column="0"><TextBlock Text="Server address"/><TextBox Text="{Binding Server, UpdateSourceTrigger=PropertyChanged}" ToolTip="VPN server DNS name or IP"/></StackPanel>
-    <StackPanel Grid.Column="1"><TextBlock Text="Username"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
-    <StackPanel Grid.Column="2"><TextBlock Text="Protocol"/><ComboBox Margin="0,4,0,8" Padding="7,6" SelectedValue="{Binding Protocol}" SelectedValuePath="Tag">
+    <StackPanel Grid.Column="0" IsEnabled="{Binding CanEditConnection}"><TextBlock Text="Server address"/><TextBox Text="{Binding Server, UpdateSourceTrigger=PropertyChanged}" ToolTip="VPN server DNS name or IP"/></StackPanel>
+    <StackPanel Grid.Column="1" IsEnabled="{Binding CanEditConnection}"><TextBlock Text="Username"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+    <StackPanel Grid.Column="2" IsEnabled="{Binding CanEditConnection}"><TextBlock Text="Protocol"/><ComboBox Margin="0,4,0,8" Padding="7,6" SelectedValue="{Binding Protocol}" SelectedValuePath="Tag">
      <ComboBoxItem Content="SSTP" Tag="{x:Static core:VpnProtocol.Sstp}"/><ComboBoxItem Content="L2TP / IPsec" Tag="{x:Static core:VpnProtocol.L2tp}"/>
     </ComboBox></StackPanel>
-    <StackPanel Grid.Row="1" Grid.Column="0"><TextBlock Text="Password"/><PasswordBox x:Name="PasswordInput" PasswordChanged="PasswordInput_PasswordChanged"/></StackPanel>
-    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,8"><CheckBox Content="Remember credentials" IsChecked="{Binding RememberCredentials}" VerticalAlignment="Center"/></StackPanel>
-    <StackPanel Grid.Row="1" Grid.Column="2" x:Name="L2tpPanel" Visibility="Collapsed"><TextBlock Text="L2TP pre-shared key"/><PasswordBox x:Name="PskInput" PasswordChanged="PskInput_PasswordChanged"/></StackPanel>
+    <StackPanel Grid.Row="1" Grid.Column="0" IsEnabled="{Binding CanEditConnection}"><TextBlock Text="Password"/><PasswordBox x:Name="PasswordInput" PasswordChanged="PasswordInput_PasswordChanged"/></StackPanel>
+    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,8" IsEnabled="{Binding CanEditConnection}"><CheckBox Content="Remember credentials" IsChecked="{Binding RememberCredentials}" VerticalAlignment="Center"/></StackPanel>
+    <StackPanel Grid.Row="1" Grid.Column="2" x:Name="L2tpPanel" Visibility="Collapsed" IsEnabled="{Binding CanEditConnection}"><TextBlock Text="L2TP pre-shared key"/><PasswordBox x:Name="PskInput" PasswordChanged="PskInput_PasswordChanged"/></StackPanel>
     <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,2,0,0">
      <Button Content="Connect" Command="{Binding ConnectCommand}" Background="#176B65" Foreground="White" BorderBrush="#176B65" FontWeight="SemiBold"/>
      <Button Content="Disconnect" Command="{Binding DisconnectCommand}"/>

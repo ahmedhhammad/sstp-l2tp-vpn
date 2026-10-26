@@ -238,12 +238,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAppLogger
 
     private async Task PollConnectionAsync(CancellationToken cancellationToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                var connected = await _vpn.IsConnectedAsync(cancellationToken);
+                var connectionStatus = await _vpn.GetConnectedStatusAsync(cancellationToken);
+                if (connectionStatus is null) continue;
+                var connected = connectionStatus.Value;
                 if (connected && !_wasConnected)
                 {
                     _wasConnected = true; State = VpnState.Connected; StateText = "Connected"; await ApplyRoutesAsync();

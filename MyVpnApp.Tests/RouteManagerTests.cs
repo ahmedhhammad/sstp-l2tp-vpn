@@ -11,14 +11,14 @@ public sealed class RouteManagerTests : IDisposable
     [Fact]
     public async Task BuildsExpectedAddAndDeleteCommandsAndAppliesOnlyEnabled()
     {
-        var runner = new FakeRunner(_ => new ProcessResult(0, "{\"InterfaceIndex\":42,\"Gateway\":\"10.99.242.1\"}", ""));
+        var runner = new FakeRunner(_ => new ProcessResult(0, "{\"InterfaceIndex\":42,\"Gateway\":\"10.99.242.0\"}", ""));
         var manager = CreateManager(runner);
         var yes = new RouteEntry(Guid.NewGuid(), "192.168.1.77/24", "", true);
         var no = new RouteEntry(Guid.NewGuid(), "10.20.0.0/16", "", false);
         var result = await manager.ApplyEnabledAsync([yes, no]);
         Assert.Single(result);
         Assert.True(result[0].Applied);
-        Assert.Contains(runner.Commands, x => x.DisplayCommand == "route.exe ADD 192.168.1.0 MASK 255.255.255.0 10.99.242.1 METRIC 1 IF 42");
+        Assert.Contains(runner.Commands, x => x.DisplayCommand == "route.exe ADD 192.168.1.0 MASK 255.255.255.0 10.99.242.0 METRIC 1 IF 42");
         Assert.DoesNotContain(runner.Commands, x => x.DisplayCommand!.Contains("10.20.0.0"));
         Assert.True(await manager.DeleteAsync(yes.Id));
         Assert.Contains(runner.Commands, x => x.DisplayCommand == "route.exe DELETE 192.168.1.0 MASK 255.255.255.0");

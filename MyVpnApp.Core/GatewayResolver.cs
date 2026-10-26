@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -6,27 +8,58 @@ namespace MyVpnApp.Core;
 public sealed class GatewayResolver(IProcessRunner runner, IAppLogger? logger = null)
 {
     private readonly IAppLogger _logger = logger ?? new NullAppLogger();
-    private static readonly Regex IpconfigAddress = new(@"(?:PPP adapter|Ethernet adapter)\s+([^:\r\n]+)[\s\S]*?IPv4 Address[^:]*:\s*(\d{1,3}(?:\.\d{1,3}){3})[\s\S]*?Default Gateway[^:]*:\s*(\d{1,3}(?:\.\d{1,3}){3})?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AdapterHeader = new(@"(?im)^(?:PPP|Ethernet) adapter\s+([^:\r\n]+):\s*$", RegexOptions.Compiled);
+    private static readonly Regex Ipv4Line = new(@"(?im)IPv4 Address[^\r\n:]*:\s*(?:\([^)]*\)\s*)?(\d{1,3}(?:\.\d{1,3}){3})", RegexOptions.Compiled);
+    private static readonly Regex GatewayLine = new(@"(?im)Default Gateway[^\r\n:]*:\s*(\d{1,3}(?:\.\d{1,3}){3})", RegexOptions.Compiled);
 
     public async Task<GatewayInfo?> ResolveAsync(string connectionName, CancellationToken cancellationToken = default)
     {
         var name = PowerShell.Quote(connectionName);
-        var script = $"$ErrorActionPreference='Stop'; $name={name}; $adapters=Get-NetAdapter -IncludeHidden | Where-Object {{ $_.Status -eq 'Up' }}; $a=$adapters | Where-Object {{ $_.Name -eq $name -or $_.Name -like ('*'+$name+'*') }} | Select-Object -First 1; if (-not $a) {{ $a=$adapters | Where-Object {{ $_.InterfaceDescription -match 'WAN Miniport.*(SSTP|L2TP)' }} | Select-Object -First 1 }}; if ($a) {{ $r=Get-NetRoute -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {{ $_.NextHop -ne '0.0.0.0' -and $_.NextHop -ne '127.0.0.1' }} | Sort-Object RouteMetric | Select-Object -First 1; [pscustomobject]@{{ InterfaceIndex=$a.ifIndex; Gateway=if($r){{$r.NextHop}}else{{$null}}; Alias=$a.Name }} | ConvertTo-Json -Compress }}";
-        var result = await runner.RunAsync(PowerShell.Encoded(script, "discover VPN interface and peer"), cancellationToken);
+        var script = $"$ErrorActionPreference='SilentlyContinue'; $name={name}; " +
+            "$config = (& ipconfig.exe /all | Out-String); " +
+            "$blocks = $config -split '(?m)(?=^(?:PPP|Ethernet) adapter\\s+)'; " +
+            "$block = $blocks | Where-Object { $_ -match ('(?im)^(?:PPP|Ethernet) adapter\\s+' + [regex]::Escape($name) + ':') } | Select-Object -First 1; " +
+            "$ipMatch = if($block){[regex]::Match($block,'(?im)IPv4 Address[^\\r\\n:]*:\\s*(?:\\([^)]*\\)\\s*)?(\\d{1,3}(?:\\.\\d{1,3}){3})')}; " +
+            "$peerMatch = if($block){[regex]::Match($block,'(?im)Default Gateway[^\\r\\n:]*:\\s*(\\d{1,3}(?:\\.\\d{1,3}){3})')}; " +
+            "$ip = if($ipMatch.Success){$ipMatch.Groups[1].Value}else{$null}; $peer = if($peerMatch.Success){$peerMatch.Groups[1].Value}else{$null}; " +
+            "$a = $null; if($ip){$a = Get-NetIPAddress -AddressFamily IPv4 -IPAddress $ip -ErrorAction SilentlyContinue | Select-Object -First 1}; " +
+            "if(-not $a){$a = Get-NetIPInterface -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -eq $name -and $_.ConnectionState -eq 'Connected' } | Select-Object -First 1}; " +
+            "if($a){$idx=$a.InterfaceIndex; if(-not $peer){$r=Get-NetRoute -InterfaceIndex $idx -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.NextHop -ne '0.0.0.0' -and $_.NextHop -ne '127.0.0.1' } | Sort-Object RouteMetric | Select-Object -First 1; if($r){$peer=$r.NextHop}}; " +
+            "[pscustomobject]@{InterfaceIndex=$idx; Gateway=$peer; LocalAddress=$ip; Alias=$a.InterfaceAlias} | ConvertTo-Json -Compress}";
+
+        var result = await runner.RunAsync(PowerShell.Encoded(script, "discover PPP interface and peer"), cancellationToken);
         if (result.Succeeded)
         {
             var parsed = ParsePowerShellJson(result.StandardOutput);
             if (parsed is not null)
             {
-                _logger.Write($"VPN route target: interface {parsed.InterfaceIndex}, gateway {parsed.RouteGateway} ({parsed.Source}).");
+                _logger.Write($"VPN PPP route target: interface {parsed.InterfaceIndex}, peer {parsed.RouteGateway} ({parsed.Source}).");
                 return parsed;
             }
         }
-        _logger.Write("Could not find the VPN interface through Get-NetAdapter; checking ipconfig output.");
+
+        _logger.Write("PowerShell could not map the PPP adapter; checking ipconfig output and resolving its address to an interface.");
         var ipconfig = await runner.RunAsync(new ProcessSpec("ipconfig.exe", ["/all"], "ipconfig.exe /all"), cancellationToken);
-        var fallback = ParseIpconfig(ipconfig.StandardOutput, connectionName);
-        if (fallback is not null) _logger.Write($"VPN route target: interface {fallback.InterfaceIndex}, gateway {fallback.RouteGateway} ({fallback.Source}).");
-        return fallback;
+        var details = ParseIpconfigDetails(ipconfig.StandardOutput, connectionName);
+        if (details is null) return null;
+
+        var detail = details.Value;
+        var fallbackScript = "$ErrorActionPreference='SilentlyContinue'; $ip=" + PowerShell.Quote(detail.LocalAddress) +
+            "; $a=Get-NetIPAddress -AddressFamily IPv4 -IPAddress $ip -ErrorAction SilentlyContinue | Select-Object -First 1; " +
+            "if($a){[pscustomobject]@{InterfaceIndex=$a.InterfaceIndex; Gateway=" +
+            (detail.Gateway is null ? "$null" : PowerShell.Quote(detail.Gateway)) +
+            "; LocalAddress=$ip; Alias=$a.InterfaceAlias} | ConvertTo-Json -Compress}";
+        var lookup = await runner.RunAsync(PowerShell.Encoded(fallbackScript, "map PPP address to interface"), cancellationToken);
+        var mapped = lookup.Succeeded ? ParsePowerShellJson(lookup.StandardOutput) : null;
+        if (mapped is not null)
+        {
+            var resolved = mapped with { Source = "ipconfig/Get-NetIPAddress" };
+            _logger.Write($"VPN PPP route target: interface {resolved.InterfaceIndex}, peer {resolved.RouteGateway} ({resolved.Source}).");
+            return resolved;
+        }
+
+        // Never guess an interface. A zero next hop is safe only after the correct interface is known.
+        return new GatewayInfo(0, detail.Gateway, "ipconfig; interface index unavailable");
     }
 
     public static GatewayInfo? ParsePowerShellJson(string text)
@@ -41,20 +74,15 @@ public sealed class GatewayResolver(IProcessRunner runner, IAppLogger? logger = 
             var root = json.RootElement;
             if (!TryInt(root, "InterfaceIndex", out var index) || index <= 0) return null;
             var gateway = GetString(root, "Gateway");
-            return new GatewayInfo(index, IsIpv4(gateway) ? gateway : null, "Get-NetRoute");
+            return new GatewayInfo(index, IsUsableIpv4(gateway) ? gateway : null, "ipconfig/Get-NetIPAddress/Get-NetRoute");
         }
         catch (JsonException) { return null; }
     }
 
     public static GatewayInfo? ParseIpconfig(string text, string connectionName, int interfaceIndex = 0)
     {
-        foreach (Match match in IpconfigAddress.Matches(text))
-        {
-            if (!match.Groups[1].Value.Contains(connectionName, StringComparison.OrdinalIgnoreCase)) continue;
-            var gateway = match.Groups[3].Value;
-            return new GatewayInfo(interfaceIndex, IsIpv4(gateway) ? gateway : null, "ipconfig (on-link fallback if no peer address)");
-        }
-        return null;
+        var details = ParseIpconfigDetails(text, connectionName);
+        return details is null ? null : new GatewayInfo(interfaceIndex, details.Value.Gateway, "ipconfig (on-link if no PPP peer is reported)");
     }
 
     public static GatewayInfo? ParseGetNetRoute(string text, int? expectedInterfaceIndex = null)
@@ -66,13 +94,38 @@ public sealed class GatewayResolver(IProcessRunner runner, IAppLogger? logger = 
             if (expectedInterfaceIndex is not null && index != expectedInterfaceIndex.Value) continue;
             if (!fields[1].Contains('/')) continue;
             var gateway = fields[2];
-            if (IsIpv4(gateway) && gateway != "0.0.0.0" && gateway != "127.0.0.1")
-                return new GatewayInfo(index, gateway, "Get-NetRoute table");
+            if (IsUsableIpv4(gateway)) return new GatewayInfo(index, gateway, "Get-NetRoute table");
         }
         return null;
     }
 
-    private static bool TryInt(JsonElement root, string key, out int value) => root.TryGetProperty(key, out var e) && int.TryParse(e.ToString(), out value) || (value = 0) != 0;
-    private static string? GetString(JsonElement root, string key) => root.TryGetProperty(key, out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
-    private static bool IsIpv4(string? value) => System.Net.IPAddress.TryParse(value, out var ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork;
+    private static (string LocalAddress, string? Gateway)? ParseIpconfigDetails(string text, string connectionName)
+    {
+        var headers = AdapterHeader.Matches(text);
+        for (var i = 0; i < headers.Count; i++)
+        {
+            var header = headers[i];
+            if (!header.Groups[1].Value.Contains(connectionName, StringComparison.OrdinalIgnoreCase)) continue;
+            var end = i + 1 < headers.Count ? headers[i + 1].Index : text.Length;
+            var section = text[header.Index..end];
+            var ip = Ipv4Line.Match(section);
+            if (!ip.Success || !IsUsableIpv4(ip.Groups[1].Value)) continue;
+            var gatewayMatch = GatewayLine.Match(section);
+            var gateway = gatewayMatch.Success && IsUsableIpv4(gatewayMatch.Groups[1].Value) ? gatewayMatch.Groups[1].Value : null;
+            return (ip.Groups[1].Value, gateway);
+        }
+        return null;
+    }
+
+    private static bool TryInt(JsonElement root, string key, out int value)
+    {
+        value = 0;
+        return root.TryGetProperty(key, out var element) && int.TryParse(element.ToString(), out value);
+    }
+
+    private static string? GetString(JsonElement root, string key) =>
+        root.TryGetProperty(key, out var element) && element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+
+    private static bool IsUsableIpv4(string? value) =>
+        IPAddress.TryParse(value, out var address) && address.AddressFamily == AddressFamily.InterNetwork && !address.Equals(IPAddress.Any) && !IPAddress.IsLoopback(address);
 }

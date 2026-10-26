@@ -56,7 +56,7 @@ Use **Enable L2TP behind NAT** to set `HKLM\SYSTEM\CurrentControlSet\Services\Po
 ## Known limitations
 
 - A live SSTP/L2TP server, credentials, and reachable routed hosts are needed for end-to-end checks. No live VPN connection was available in the build environment.
-- Native tests cover CIDR, DPAPI, and persistence logic, but do not mock the native RAS and IP Helper calls. The 32-test xUnit suite covers the legacy managed route manager; actual native route installation and cleanup still need the manual checks.
+- Native tests cover CIDR, DPAPI, and persistence logic, but do not mock the native RAS and IP Helper calls. The 34-test xUnit suite covers the managed route manager; actual VPN adapter discovery and route installation still need the manual checks.
 - Windows 7 uses its legacy networking APIs and needs current servicing updates and TLS 1.2 enabled for modern SSTP endpoints. See the SSTP certificate help button for common certificate failures.
 - A failed route cleanup remains in the applied-route record for a later retry. Windows route APIs identify a route by its route tuple, so another program installing an identical route can make ownership ambiguous.
 - If Windows cannot match the PPP local address to a network interface, automatic route setup is reported as failed rather than guessing an interface.
