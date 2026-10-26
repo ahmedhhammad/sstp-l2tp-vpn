@@ -1,6 +1,6 @@
 # Manual test checklist
 
-Run these checks on Windows 7 SP1, Windows 10, and Windows 11 where available, with administrator access and working VPN server details. Launch `native\bin\Release\MyVpnApp.exe` (or run the Debug x64 target from Visual Studio) and record the Windows build, VPN server type, and result for each protocol.
+Run these checks on Windows 7 SP1, Windows 10, and Windows 11 where available, with administrator access and working VPN server details. Launch `native\bin\Release\SarmadiVpn.exe` (or run the Debug x64 target from Visual Studio) and record the Windows build, VPN server type, and result for each protocol.
 
 1. **Connect with SSTP**
    - Select SSTP, enter the server, username, and password, then choose **Connect**.
@@ -27,7 +27,7 @@ Run these checks on Windows 7 SP1, Windows 10, and Windows 11 where available, w
    - Expected: the app disconnects and deletes the applied route before exiting.
 
 7. **Recover after forced termination**
-   - Connect with the route enabled, terminate MyVpnApp from Task Manager, then relaunch it.
+   - Connect with the route enabled, terminate SarmadiVpn from Task Manager, then relaunch it.
    - Expected: startup reads `applied-routes.json`, attempts stale route deletion, and logs the result. Confirm with `route print`.
 
 8. **Route persistence**

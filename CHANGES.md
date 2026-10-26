@@ -1,16 +1,20 @@
 # Audit and change plan
 
+## SARMADI VPN branding
+
+The managed solution, source namespaces, native project, executable, and UI now use the SARMADI VPN brand and the supplied logo. The existing `%APPDATA%\MyVpnApp` location is retained so saved settings and routes continue to load after upgrading.
+
 ## Audit (before implementation)
 
 | Item | Finding |
 | --- | --- |
-| Language and UI | C# on .NET 8, WPF with a small MVVM view model (`MyVpnApp/MainWindow.xaml`, `MyVpnApp/MainViewModel.cs`). |
+| Language and UI | C# on .NET 8, WPF with a small MVVM view model (`SarmadiVpn/MainWindow.xaml`, `SarmadiVpn/MainViewModel.cs`). |
 | Target | `net8.0-windows`, x64 Release build. |
-| VPN connection | Windows RAS profile configured by `Add-VpnConnection` / `Set-VpnConnection` through Windows PowerShell, then connected and disconnected with `rasdial.exe` (`MyVpnApp.Core/VpnService.cs`). Routes use `route.exe`; gateway discovery uses the PPP block from `ipconfig /all`, maps its local IPv4 address with `Get-NetIPAddress`, and reads the peer from its Default Gateway or interface routes. |
-| Current executable | `MyVpnApp/artifacts/verified-final/Release/net8.0-windows/MyVpnApp.exe`: 151,552 bytes (148 KiB). It is the framework-dependent .NET app host, not a standalone deployment. Its adjacent managed files include `MyVpnApp.dll` (49,152 bytes), `MyVpnApp.Core.dll` (77,312 bytes), `.deps.json`, and `.runtimeconfig.json`. PDBs are build artifacts and are not needed at runtime. `dumpbin.exe` is not installed in this environment, so a native import report cannot be produced for this managed app host. |
+| VPN connection | Windows RAS profile configured by `Add-VpnConnection` / `Set-VpnConnection` through Windows PowerShell, then connected and disconnected with `rasdial.exe` (`SarmadiVpn.Core/VpnService.cs`). Routes use `route.exe`; gateway discovery uses the PPP block from `ipconfig /all`, maps its local IPv4 address with `Get-NetIPAddress`, and reads the peer from its Default Gateway or interface routes. |
+| Current executable | `SarmadiVpn/bin/Release/net8.0-windows/SarmadiVpn.exe`: 153,088 bytes. It is the framework-dependent .NET app host, not a standalone deployment; it needs the .NET 8 Desktop Runtime. The native standalone build is `native/bin/Release/SarmadiVpn.exe`. |
 | Runtime dependencies | Requires a compatible .NET 8 Desktop Runtime for WPF. The application also invokes Windows PowerShell (`powershell.exe`), `rasdial.exe`, `route.exe`, and `ipconfig.exe`; these are not bundled. A self-contained .NET publish would include a much larger runtime and still would not make .NET 8 supported on Windows 7. |
 | OS compatibility with nothing installed | The current framework-dependent app cannot run on a clean machine without the .NET Desktop Runtime. .NET 8 does not support Windows 7 SP1 or Windows 8.1; its current Windows support table lists Windows 10 LTSC/Enterprise releases and Windows 11. See [Microsoft's .NET on Windows requirements](https://learn.microsoft.com/en-us/dotnet/core/install/windows). |
-| Native build tools | `cl.exe`, `dumpbin.exe`, CMake, and other C++ compilers are absent from PATH and the installed Visual Studio directory. Without a native compiler, a C++ port cannot be built, sized, or tested in this environment. |
+| Native build tools | Visual Studio 2026 C++ tools and the Windows SDK are installed. The native project was rebuilt after the branding changes. |
 
 ## Requirement gap table
 
@@ -24,16 +28,18 @@
 | Apply, delete, drop cleanup, stale-route record, per-route status | Partial | `RouteManager` retries route additions, tracks applied routes, and cleans stale records; `MainViewModel` applies and removes routes. The path depends on a resolvable gateway/interface and external processes, and real VPN behavior has not been tested here. |
 | Atomic settings and route persistence | Done | `RouteStore`, `SettingsStore`, and `AtomicJsonFile` save to the app data directory with corruption backup. `CredentialProtector` encrypts saved credentials with DPAPI. |
 | Responsiveness and usability | Partial | Async commands and an activity log exist. There is no single-instance guard, tray icon, or log-copy button. |
-| Manifest | Partial | `MyVpnApp/app.manifest` requests administrator access. It has no supportedOS declarations or DPI-awareness setting. |
-| Automated tests | Done | `MyVpnApp.Tests` contains xUnit tests for CIDR parsing, route persistence, route management, gateway parsing, DPAPI, and VPN service behavior. The latest verified run passed 34 tests. |
+| Manifest | Partial | `SarmadiVpn/app.manifest` requests administrator access. It has no supportedOS declarations or DPI-awareness setting. |
+| Automated tests | Done | `SarmadiVpn.Tests` contains xUnit tests for CIDR parsing, route persistence, route management, gateway parsing, DPAPI, and VPN service behavior. The latest verified run passed 34 tests. |
 
 ## Native implementation update
 
-After installing the selected MSVC C++ workload and SDK, a native Win32 build was added in `native\MyVpnAppNative.sln`. The managed solution remains intact. The native UI uses Windows RAS and IP Helper APIs (not an SSTP/L2TP implementation), embeds a requireAdministrator manifest, statically links the CRT, and targets Windows 7 SP1 minimum. It stores settings, protected secrets, route list, and applied-route cleanup data under `%APPDATA%\MyVpnApp`.
+After installing the selected MSVC C++ workload and SDK, a native Win32 build was added in `native\SarmadiVpnNative.sln`. The managed solution remains intact. The native UI uses Windows RAS and IP Helper APIs (not an SSTP/L2TP implementation), embeds a requireAdministrator manifest, statically links the CRT, and targets Windows 7 SP1 minimum. It stores settings, protected secrets, route list, and applied-route cleanup data under `%APPDATA%\MyVpnApp`.
 
 Verified in this environment:
 
 - The native Visual Studio Release x64 solution builds successfully with MSBuild.
+- The native logic checks pass, including CIDR, DPAPI, and route persistence cases.
+- The managed WPF Release build succeeds, and all 34 xUnit tests pass.
 - The native test harness passes CIDR/mask/normalization checks, invalid-input checks, DPAPI encryption/decryption, route JSON save/reload, and corrupt-file backup/recovery.
 - The managed xUnit suite passes all 34 tests (these exercise the legacy managed route manager, not native IP Helper calls). The native harness covers CIDR, DPAPI, and persistence, while real native RAS/routing still requires manual verification.
 - The native executable has been inspected with `dumpbin /dependents`; it imports Windows system DLLs and no .NET runtime or PowerShell dependency.

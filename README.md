@@ -1,30 +1,30 @@
-# MyVpnApp
+# SARMADI VPN
 
-MyVpnApp is a Windows desktop GUI for SSTP and L2TP/IPsec using the Windows RAS client. It configures a Windows VPN profile and adds IPv4 split routes after the connection is established. The native build targets Windows 7 SP1 and later and has no .NET runtime dependency.
+SARMADI VPN is a Windows desktop client for SSTP and L2TP/IPsec using the Windows RAS client. It configures a Windows VPN profile and adds IPv4 split routes after the connection is established. The native build targets Windows 7 SP1 and later and has no .NET runtime dependency. The supplied Sarmadi logo is embedded in both builds.
 
 ## Visual Studio: build and debug
 
-Open `native\MyVpnAppNative.sln` in Visual Studio 2026 with **Desktop development with C++**, the MSVC x64 tools, and a Windows SDK installed. Choose **Debug | x64** and press **F5**. Start Visual Studio as administrator so the debugger can attach to the elevated app. The executable requests administrator elevation because route management and the NAT setting require it.
+Open `native\SarmadiVpnNative.sln` in Visual Studio 2026 with **Desktop development with C++**, the MSVC x64 tools, and a Windows SDK installed. Choose **Debug | x64** and press **F5**. Start Visual Studio as administrator so the debugger can attach to the elevated app. The executable requests administrator elevation because route management and the NAT setting require it.
 
-The original managed solution is still available as `MyVpnApp.sln`; it contains the .NET 8 WPF application and xUnit tests. In that solution select **MyVpnApp** (the WPF app) as the startup project. `MyVpnApp.Core` is a class library and cannot run directly.
+The managed solution is `SarmadiVpn.sln`; it contains the .NET 8 WPF application and xUnit tests. In that solution select **SARMADI VPN** (the WPF app) as the startup project. `SarmadiVpn.Core` is a class library and cannot run directly.
 
 ## Native build
 
 In a Visual Studio Developer PowerShell:
 
 ```powershell
-msbuild .\native\MyVpnAppNative.sln /t:Build /p:Configuration=Release /p:Platform=x64
+msbuild .\native\SarmadiVpnNative.sln /t:Build /p:Configuration=Release /p:Platform=x64
 ```
 
-The standalone, statically linked executable is `native\bin\Release\MyVpnApp.exe`. It is a single-file Win32 application. The project links the C runtime statically and embeds `native\app.manifest` with `requireAdministrator`. Release uses size optimization. `native\run-tests.ps1` compiles and runs the native logic checks.
+The standalone, statically linked executable is `native\bin\Release\SarmadiVpn.exe`. It is a single-file Win32 application. The project links the C runtime statically and embeds `native\app.manifest` with `requireAdministrator`. Release uses size optimization. `native\run-tests.ps1` compiles and runs the native logic checks.
 
-The original .NET WPF application can be built and published separately:
+The managed .NET WPF application can be built and published separately:
 
 ```powershell
-dotnet restore .\MyVpnApp.sln
-dotnet build .\MyVpnApp.sln -c Release
-dotnet run --project .\MyVpnApp\MyVpnApp.csproj
-dotnet publish .\MyVpnApp\MyVpnApp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+dotnet restore .\SarmadiVpn.sln
+dotnet build .\SarmadiVpn.sln -c Release
+dotnet run --project .\SarmadiVpn\SarmadiVpn.csproj
+dotnet publish .\SarmadiVpn\SarmadiVpn.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
 The .NET 8 build does not support Windows 7; use the native project for the Windows 7 target.
@@ -34,14 +34,14 @@ The .NET 8 build does not support Windows 7; use the native project for the Wind
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\native\run-tests.ps1
 $env:DOTNET_CLI_HOME = (Join-Path (Get-Location) '.dotnet-cli')
-dotnet test .\MyVpnApp.sln -c Release --no-restore
+dotnet test .\SarmadiVpn.sln -c Release --no-restore
 ```
 
 The native checks cover IPv4 CIDR parsing and normalization, dotted masks, invalid input, DPAPI encryption/decryption, and route-list save/reload. The managed xUnit suite additionally tests route command building, route retry and cleanup behavior, gateway parsing, settings persistence, and credential protection. Neither suite can prove behavior against a live VPN server; use [MANUAL_TESTS.md](MANUAL_TESTS.md) for Windows verification.
 
 ## Data and credentials
 
-Application data is stored under `%APPDATA%\MyVpnApp`:
+Application data remains under `%APPDATA%\MyVpnApp` so upgrades keep existing routes, settings, and encrypted credentials:
 
 - `settings.json` contains the server, username, protocol, remember choice, and DPAPI-protected secrets. Passwords and PSKs are never written as plaintext.
 - `routes.json` stores route destinations, labels, and enabled state. Routes persist until explicitly deleted.
@@ -52,6 +52,10 @@ Writes use a temporary file and replace/move operation. Corrupt JSON data is bac
 ## L2TP behind NAT
 
 Use **Enable L2TP behind NAT** to set `HKLM\SYSTEM\CurrentControlSet\Services\PolicyAgent\AssumeUDPEncapsulationContextOnSendRule` to DWORD `2`. Restart Windows before connecting. The VPN server and firewalls must also permit L2TP/IPsec traffic.
+
+## SSTP server identity errors
+
+RAS error 778 means Windows could not verify the server identity; it is not proof of a bad username or password. The SSTP server must present a valid, unexpired TLS certificate trusted by Windows, and the certificate DNS name must match the server address entered in the app. Use the matching DNS hostname and ask the server administrator to check its certificate chain and SSTP certificate binding. The app does not disable certificate validation.
 
 ## Known limitations
 
