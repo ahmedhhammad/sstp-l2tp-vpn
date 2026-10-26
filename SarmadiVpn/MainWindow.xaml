@@ -55,7 +55,7 @@
     <StackPanel Grid.Row="1" Grid.Column="2" x:Name="L2tpPanel" Visibility="Collapsed" IsEnabled="{Binding CanEditConnection}"><TextBlock Text="L2TP pre-shared key"/><PasswordBox x:Name="PskInput" PasswordChanged="PskInput_PasswordChanged"/></StackPanel>
     <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,2,0,0">
      <Button Content="Connect" Command="{Binding ConnectCommand}" Background="#176B65" Foreground="White" BorderBrush="#176B65" FontWeight="SemiBold"/>
-     <Button Content="Disconnect" Command="{Binding DisconnectCommand}"/>
+     <Button Content="Disconnect" Command="{Binding DisconnectCommand}" Background="#FCE8E6" Foreground="#8E2D27" BorderBrush="#E7A6A1"/>
      <Button Content="Enable L2TP behind NAT" Command="{Binding NatCommand}"/>
     </StackPanel>
    </Grid>
