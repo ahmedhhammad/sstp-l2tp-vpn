@@ -47,6 +47,10 @@ The executable is produced in `MyVpnApp\bin\Release\net8.0-windows\win-x64\publi
 
 Use **Enable L2TP behind NAT** to set `HKLM\SYSTEM\CurrentControlSet\Services\PolicyAgent\AssumeUDPEncapsulationContextOnSendRule` to DWORD `2`. The app runs elevated, but Windows must be restarted before the setting takes effect. The VPN server and network firewall must also allow the required L2TP/IPsec traffic.
 
+## Connection errors
+
+Profile creation or update errors are reported separately from rasdial connection errors. The activity log removes PowerShell's CLIXML wrapper and shows the readable Windows error text. rasdial failures include the RAS error code when Windows provides one, with targeted guidance for credential, SSTP certificate, L2TP/IPsec, and DNS or reachability problems. Passwords and L2TP keys are hidden from command logs and redacted from process output.
+
 ## Known limitations
 
 - A live SSTP/L2TP server and credentials are required for end-to-end connection checks. The application relies on Windows VPN cmdlets and `rasdial`, so behavior can vary with Windows policy, server configuration, certificates, and firewall rules.

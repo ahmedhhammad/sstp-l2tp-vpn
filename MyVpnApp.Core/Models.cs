@@ -10,7 +10,7 @@ public sealed record GatewayInfo(int InterfaceIndex, string? Gateway, string Sou
     public string RouteGateway => string.IsNullOrWhiteSpace(Gateway) ? "0.0.0.0" : Gateway;
 }
 public sealed record AppliedRoute(string Destination, string Netmask);
-public sealed record ProcessSpec(string FileName, IReadOnlyList<string> Arguments, string? DisplayCommand = null);
+public sealed record ProcessSpec(string FileName, IReadOnlyList<string> Arguments, string? DisplayCommand = null, IReadOnlyList<string>? SensitiveValues = null);
 public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError)
 {
     public bool Succeeded => ExitCode == 0;
@@ -58,11 +58,24 @@ public sealed class ProcessRunner(IAppLogger logger) : IProcessRunner
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
-            var result = new ProcessResult(process.ExitCode, await stdout, await stderr);
+            var standardOutput = await stdout;
+            var standardError = await stderr;
+            if (Path.GetFileNameWithoutExtension(spec.FileName).Equals("powershell", StringComparison.OrdinalIgnoreCase))
+            {
+                standardOutput = PowerShellOutput.Normalize(standardOutput);
+                standardError = PowerShellOutput.Normalize(standardError);
+            }
+            foreach (var secret in spec.SensitiveValues ?? [])
+            {
+                if (string.IsNullOrEmpty(secret)) continue;
+                standardOutput = standardOutput.Replace(secret, "<redacted>", StringComparison.Ordinal);
+                standardError = standardError.Replace(secret, "<redacted>", StringComparison.Ordinal);
+            }
+            var result = new ProcessResult(process.ExitCode, standardOutput, standardError);
             logger.Write(result.CombinedOutput.Length == 0 ? $"Exit code: {result.ExitCode}" : result.CombinedOutput);
             return result;
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
             logger.Write(ex.Message);
             return new ProcessResult(-1, "", ex.Message);
