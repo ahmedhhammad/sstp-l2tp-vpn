@@ -1,34 +1,34 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using System.Windows.Interop;
+using System.Windows.Threading;
 
 namespace SarmadiVpn;
 
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
-    private ImageSource? _brandIcon;
+    private TaskbarStatusOverlay? _taskbarOverlay;
     private bool _closing;
 
     public MainWindow()
     {
         InitializeComponent();
-        _brandIcon = Icon;
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-        UpdateTaskbarStatusIcon();
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateTaskbarStatusIcon));
         try
         {
             await _viewModel.InitializeAsync();
             PasswordInput.Password = _viewModel.Password;
             PskInput.Password = _viewModel.L2tpPsk;
             UpdateL2tpVisibility();
+            UpdateTaskbarStatusIcon();
         }
         catch (Exception ex)
         {
@@ -48,29 +48,15 @@ public partial class MainWindow : Window
 
     private void UpdateTaskbarStatusIcon()
     {
-        if (_brandIcon is null) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !IsLoaded) return;
 
-        var color = _viewModel.State switch
+        try
         {
-            SarmadiVpn.Core.VpnState.Connected => Color.FromRgb(34, 197, 94),
-            SarmadiVpn.Core.VpnState.Connecting or SarmadiVpn.Core.VpnState.Disconnecting => Color.FromRgb(240, 180, 20),
-            _ => Color.FromRgb(220, 53, 69)
-        };
-
-        const int size = 32;
-        var visual = new DrawingVisual();
-        using (var drawing = visual.RenderOpen())
-        {
-            drawing.DrawImage(_brandIcon, new Rect(0, 0, size, size));
-            var center = new Point(6.5, 6.5);
-            drawing.DrawEllipse(Brushes.White, null, center, 6.5, 6.5);
-            drawing.DrawEllipse(new SolidColorBrush(color), null, center, 5, 5);
+            _taskbarOverlay ??= new TaskbarStatusOverlay();
+            _taskbarOverlay.Update(handle, _viewModel.State);
         }
-
-        var icon = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
-        icon.Render(visual);
-        icon.Freeze();
-        Icon = icon;
+        catch (Exception ex) { _viewModel.Write("Could not update the taskbar VPN status icon: " + ex.Message); }
     }
 
     private void UpdateL2tpVisibility() => L2tpPanel.Visibility = _viewModel.Protocol == SarmadiVpn.Core.VpnProtocol.L2tp ? Visibility.Visible : Visibility.Collapsed;
@@ -98,6 +84,9 @@ public partial class MainWindow : Window
         }
         finally
         {
+            try { _taskbarOverlay?.Clear(new WindowInteropHelper(this).Handle); }
+            catch (Exception ex) { _viewModel.Write("Could not clear the taskbar status overlay: " + ex.Message); }
+            _taskbarOverlay?.Dispose();
             _closing = true;
             Close();
         }

@@ -2,6 +2,10 @@
 
 User-visible changes for SARMADI VPN are recorded here.
 
+## 0.1.0-preview.3
+
+- Refresh the VPN status dot through the Windows taskbar overlay API while keeping the application logo unchanged.
+
 ## 0.1.0-preview.2
 
 - Store managed and native app data under `%APPDATA%\SarmadiVpn`.
