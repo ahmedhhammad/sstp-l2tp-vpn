@@ -2,6 +2,11 @@
 
 User-visible changes for SARMADI VPN are recorded here.
 
+## 0.1.0-preview.4
+
+- Fix the taskbar status overlay interface identifier so Windows can apply the state dot.
+- Wait for Windows to create the taskbar button before setting or restoring the overlay.
+
 ## 0.1.0-preview.3
 
 - Refresh the VPN status dot through the Windows taskbar overlay API while keeping the application logo unchanged.

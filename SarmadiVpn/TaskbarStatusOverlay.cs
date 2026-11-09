@@ -15,9 +15,30 @@ internal sealed class TaskbarStatusOverlay : IDisposable
 
     public TaskbarStatusOverlay()
     {
+        _taskbar = CreateTaskbarList();
+    }
+
+    internal static void VerifyTaskbarInterfaceCanBeQueried()
+    {
         var taskbarType = Type.GetTypeFromCLSID(TaskbarListClassId, throwOnError: true)!;
-        _taskbar = (ITaskbarList3)Activator.CreateInstance(taskbarType)!;
-        Marshal.ThrowExceptionForHR(_taskbar.HrInit());
+        var taskbar = (ITaskbarList3)Activator.CreateInstance(taskbarType)!;
+        if (Marshal.IsComObject(taskbar)) Marshal.ReleaseComObject(taskbar);
+    }
+
+    private static ITaskbarList3 CreateTaskbarList()
+    {
+        var taskbarType = Type.GetTypeFromCLSID(TaskbarListClassId, throwOnError: true)!;
+        var taskbar = (ITaskbarList3)Activator.CreateInstance(taskbarType)!;
+        try
+        {
+            Marshal.ThrowExceptionForHR(taskbar.HrInit());
+            return taskbar;
+        }
+        catch
+        {
+            if (Marshal.IsComObject(taskbar)) Marshal.ReleaseComObject(taskbar);
+            throw;
+        }
     }
 
     public void Update(IntPtr windowHandle, VpnState state)
@@ -128,7 +149,7 @@ internal sealed class TaskbarStatusOverlay : IDisposable
     }
 
     [ComImport]
-    [Guid("EA1AFB91-9E28-4B86-90E9-9E9F8A5EEA84")]
+    [Guid("EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface ITaskbarList3
     {
