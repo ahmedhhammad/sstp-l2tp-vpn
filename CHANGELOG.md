@@ -2,6 +2,10 @@
 
 User-visible changes for SARMADI VPN are recorded here.
 
+## 0.1.0-preview.6
+
+- Enlarge the upper-left taskbar status dot to match the requested size.
+
 ## 0.1.0-preview.5
 
 - Draw the connection status dot in the upper-left whitespace of the taskbar app icon.

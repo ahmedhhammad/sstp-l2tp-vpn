@@ -27,9 +27,9 @@ internal static class TaskbarStatusIcon
 
             // The source logo has clear white space here. At taskbar scale the
             // outlined marker remains visible without covering the lettering.
-            const double center = 14;
-            drawing.DrawEllipse(Brushes.White, null, new Point(center, center), 12, 12);
-            drawing.DrawEllipse(new SolidColorBrush(color), null, new Point(center, center), 8, 8);
+            const double center = 22;
+            drawing.DrawEllipse(Brushes.White, null, new Point(center, center), 21, 21);
+            drawing.DrawEllipse(new SolidColorBrush(color), null, new Point(center, center), 17, 17);
         }
 
         var bitmap = new RenderTargetBitmap(IconSize, IconSize, 96, 96, PixelFormats.Pbgra32);
