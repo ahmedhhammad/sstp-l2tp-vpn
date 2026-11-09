@@ -2,6 +2,11 @@
 
 User-visible changes for SARMADI VPN are recorded here.
 
+## 0.1.0-preview.5
+
+- Draw the connection status dot in the upper-left whitespace of the taskbar app icon.
+- Remove the Windows-positioned overlay badge that placed the dot at the opposite corner.
+
 ## 0.1.0-preview.4
 
 - Fix the taskbar status overlay interface identifier so Windows can apply the state dot.

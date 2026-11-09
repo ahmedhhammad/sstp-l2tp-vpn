@@ -28,7 +28,7 @@ Run on Windows 10 or 11 x64 with administrator access, a test SSTP/L2TP server, 
 
 7. **Connection state indicators**
    - Connect, disconnect, and observe the app and taskbar icons.
-   - Expected: green while connected, red while disconnected/error, and yellow while connecting or disconnecting. The small round badge appears on the taskbar app icon in Windows' overlay position.
+   - Expected: green while connected, red while disconnected/error, and yellow while connecting or disconnecting. The small round badge appears in the upper-left white space of the SARMADI VPN taskbar icon.
 
 8. **Close while connected**
    - Connect with an enabled route, then close the app normally.

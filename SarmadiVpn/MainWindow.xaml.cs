@@ -1,25 +1,23 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace SarmadiVpn;
 
 public partial class MainWindow : Window
 {
-    private static readonly uint TaskbarButtonCreatedMessage = RegisterWindowMessage("TaskbarButtonCreated");
     private readonly MainViewModel _viewModel = new();
-    private TaskbarStatusOverlay? _taskbarOverlay;
-    private bool _taskbarButtonReady;
+    private readonly ImageSource? _baseWindowIcon;
     private bool _closing;
 
     public MainWindow()
     {
         InitializeComponent();
+        _baseWindowIcon = Icon;
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-        SourceInitialized += Window_SourceInitialized;
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -50,32 +48,8 @@ public partial class MainWindow : Window
 
     private void UpdateTaskbarStatusIcon()
     {
-        var handle = new WindowInteropHelper(this).Handle;
-        if (handle == IntPtr.Zero || !_taskbarButtonReady) return;
-
-        try
-        {
-            _taskbarOverlay ??= new TaskbarStatusOverlay();
-            _taskbarOverlay.Update(handle, _viewModel.State);
-        }
-        catch (Exception ex) { _viewModel.Write("Could not update the taskbar VPN status icon: " + ex.Message); }
-    }
-
-    private void Window_SourceInitialized(object? sender, EventArgs e)
-    {
-        var handle = new WindowInteropHelper(this).Handle;
-        HwndSource.FromHwnd(handle)?.AddHook(WindowMessageHook);
-    }
-
-    private IntPtr WindowMessageHook(IntPtr handle, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
-    {
-        if ((uint)message == TaskbarButtonCreatedMessage)
-        {
-            _taskbarButtonReady = true;
-            UpdateTaskbarStatusIcon();
-        }
-
-        return IntPtr.Zero;
+        if (_baseWindowIcon is not null)
+            Icon = TaskbarStatusIcon.Create(_baseWindowIcon, _viewModel.State);
     }
 
     private void UpdateL2tpVisibility() => L2tpPanel.Visibility = _viewModel.Protocol == SarmadiVpn.Core.VpnProtocol.L2tp ? Visibility.Visible : Visibility.Collapsed;
@@ -103,14 +77,8 @@ public partial class MainWindow : Window
         }
         finally
         {
-            try { if (_taskbarButtonReady) _taskbarOverlay?.Clear(new WindowInteropHelper(this).Handle); }
-            catch (Exception ex) { _viewModel.Write("Could not clear the taskbar status overlay: " + ex.Message); }
-            _taskbarOverlay?.Dispose();
             _closing = true;
             Close();
         }
     }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
-    private static extern uint RegisterWindowMessage(string message);
 }
